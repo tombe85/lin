@@ -10,12 +10,27 @@
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Peter Jay Salzman");
 
+/* Variables para el paso de parametros "inicializadas" */
 static short int myshort = 1;
 static int myint = 420;
 static long int mylong = 9999;
 static char *mystring = "blah";
 static int myintArray[2] = { -1, -1 };
 static int arr_argc = 0;
+
+
+/* PARA SOBREESCRIBIR LOS VALORES DE LAS VARIABLES AL PASARLO POR LINEA DE COMANDO */
+/* 
+	Para el caso de variables enteras: ./insmod mymodule.ko myvariable=5 
+	Para el caso de variables string:  insmod mymodule.ko myvariable="value"
+	Para el caso de variables arrays: insmod mymodule.ko myvariablearray= 1,2,3 (sin espacios entre las comas)
+
+*/
+
+
+
+
+
 
 /* 
  * module_param(foo, int, 0000)
