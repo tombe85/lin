@@ -4,6 +4,7 @@
 #include <linux/string.h>
 #include <linux/vmalloc.h>
 #include <asm-generic/uaccess.h>
+#include <linux/ftrace.h>
 
 
 
@@ -18,49 +19,51 @@ static char *clipboard;  // Space for the "clipboard"
 
 static ssize_t clipboard_write(struct file *filp, const char __user *buf, size_t len, loff_t *off) {
   int available_space = BUFFER_LENGTH-1;
-  
+
   if ((*off) > 0) /* The application can write in this entry just once !! */
     return 0;
-  
+
   if (len > available_space) {
     printk(KERN_INFO "clipboard: not enough space!!\n");
     return -ENOSPC;
   }
-  
+
   /* Transfer data from user to kernel space */
-  if (copy_from_user( &clipboard[0], buf, len ))  
+  if (copy_from_user( &clipboard[0], buf, len ))
     return -EFAULT;
 
-  clipboard[len] = '\0'; /* Add the `\0' */  
+  clipboard[len] = '\0'; /* Add the `\0' */
   *off+=len;            /* Update the file pointer */
-  
+
+  trace_printk("Current value of clipboard: %s\n",clipboard);
+
   return len;
 }
 
 static ssize_t clipboard_read(struct file *filp, char __user *buf, size_t len, loff_t *off) {
-  
+
   int nr_bytes;
-  
+
   if ((*off) > 0) /* Tell the application that there is nothing left to read */
       return 0;
-    
+
   nr_bytes=strlen(clipboard);
-    
+
   if (len<nr_bytes)
     return -ENOSPC;
-  
-    /* Transfer data from the kernel to userspace */  
+
+    /* Transfer data from the kernel to userspace */
   if (copy_to_user(buf, clipboard,nr_bytes))
     return -EINVAL;
-    
+
   (*off)+=len;  /* Update the file pointer */
 
-  return nr_bytes; 
+  return nr_bytes;
 }
 
 static const struct file_operations proc_entry_fops = {
     .read = clipboard_read,
-    .write = clipboard_write,    
+    .write = clipboard_write,
 };
 
 

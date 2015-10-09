@@ -20,4 +20,3 @@ void modulo_lin_clean(void)
 /* Declaración de funciones init y exit */
 module_init(modulo_lin_init);
 module_exit(modulo_lin_clean);
-
