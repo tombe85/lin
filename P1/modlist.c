@@ -25,11 +25,20 @@ typedef struct {
 } list_item_t;
 
 
+void init_mylist(void) {
+  INIT_LIST_HEAD(&mylist);
+}
+
+
+
+
+
 
 
 
 static ssize_t modlist_write(struct file *filp, const char __user *buf, size_t len, loff_t *off) {
   int available_space = BUFFER_LENGTH-1;
+  int num;
 
   if ((*off) > 0) /* The application can write in this entry just once !! */
     return 0;
@@ -45,6 +54,35 @@ static ssize_t modlist_write(struct file *filp, const char __user *buf, size_t l
 
   modlist[len] = '\0'; /* Add the `\0' */
   *off+=len;            /* Update the file pointer */
+
+  if(sscanf(&modlist[0],"add %i",&num)) {
+    //printk(KERN_INFO "Se ha leido add %i\n",num);
+
+    /* Creamos el nuevo nodo */
+    list_item_t *mynodo = (list_item_t*) vmalloc(sizeof(list_item_t));
+    /* Guardamos el valor leido */
+    mynodo->data = num;
+    /* Añadimos el nodo a la lista */
+    list_add_tail(&mynodo, &mylist);
+
+  }
+  else if(sscanf(&modlist[0],"remove %i",num)) {
+
+    struct list_item* item=NULL;
+    struct list_head* cur_node=NULL;
+    list_for_each(cur_node, &mylist) {
+      /* item points to the structure wherein the links are embedded */
+      item = list_entry(cur_node,list_item_t, links);
+      printk(KERN_INFO "Borrando elemento %i\n",item->data);
+    }
+
+  }
+  else if(sscanf(&modlist[0],"cleanup")) {
+
+  }
+  else {
+    // retornar un codigo de error correspondiente (instruccion incorrecta)
+  }
 
   trace_printk("Current value of modlist: %s\n",modlist);
 
@@ -91,7 +129,7 @@ int init_modlist_module( void )
   } else {
 
     /* Asignamos la variable en memoria dinamica como variable compartida */
-    memset( modlist, 0, BUFFER_LENGTH );
+    //memset( modlist, 0, BUFFER_LENGTH );
     proc_entry = proc_create( "modlist", 0666, NULL, &proc_entry_fops);
     if (proc_entry == NULL) {
       ret = -ENOMEM;
@@ -100,6 +138,9 @@ int init_modlist_module( void )
     } else {
       printk(KERN_INFO "modlist: Module loaded\n");
     }
+
+    /* Inicializamos la lista */
+    init_mylist();
   }
 
   return ret;
