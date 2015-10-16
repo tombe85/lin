@@ -13,9 +13,11 @@ MODULE_DESCRIPTION("Modlist Kernel Module - FDI-UCM");
 MODULE_AUTHOR("Miguel Higuera Romero & Alejandro Nicolás Ibarra Loik");
 
 #define BUFFER_LENGTH       PAGE_SIZE
+#define BUF_LEN 100
 
 static struct proc_dir_entry *proc_entry;
 static char *modlist;  // Space for the "modlist" buffer
+
 
 struct list_head mylist; /* Lista enlazada */
 /* Nodos de la lista */
@@ -30,10 +32,10 @@ void init_mylist(void) {
 }
 
 static ssize_t modlist_write(struct file *filp, const char __user *buf, size_t len, loff_t *off) {
-  int available_space = BUFFER_LENGTH-1;
+  int available_space = BUF_LEN-1;
   int num;
   list_item_t *mynodo;
-  
+
   if ((*off) > 0) /* The application can write in this entry just once !! */
     return 0;
 
@@ -58,28 +60,40 @@ static ssize_t modlist_write(struct file *filp, const char __user *buf, size_t l
     mynodo->data = num;
     /* Añadimos el nodo a la lista */
     list_add_tail(&mynodo->links, &mylist);
-    printk(KERN_INFO "Añadido el elemento %i a la lista\n", num);
+    printk(KERN_INFO "Aniadido el elemento %i a la lista\n", num);
 
   }
   else if(sscanf(&modlist[0],"remove %i",&num)) {
 
-    list_item_t *item=NULL;
+    //list_item_t *item=NULL;
     struct list_head* cur_node=NULL;
     list_for_each(cur_node, &mylist) {
       /* item points to the structure wherein the links are embedded */
-      item = list_entry(cur_node,list_item_t, links);
-      printk(KERN_INFO "Borrando elemento %i\n", item->data);
+      mynodo = list_entry(cur_node,list_item_t, links);
+      if(mynodo->data == num) {
+        printk(KERN_INFO "Borrando elemento %i\n", mynodo->data);
+        list_del(cur_node);
+        vfree(mynodo);
+      }
     }
-
   }
   else if(sscanf(&modlist[0],"cleanup")) {
+    struct list_head* cur_node=NULL;
+    list_for_each(cur_node, &mylist) {
+      /* item points to the structure wherein the links are embedded */
+      mynodo = list_entry(cur_node,list_item_t, links);
+      printk(KERN_INFO "Borrando elemento %i\n", mynodo->data);
+      list_del(cur_node);
+      vfree(mynodo);
+    }
 
   }
   else {
     // retornar un codigo de error correspondiente (instruccion incorrecta)
+    return -EINVAL;
   }
 
-  trace_printk("Current value of modlist: %s\n",modlist);
+  //trace_printk("Current value of modlist: %s\n",modlist);
 
   return len;
 }
@@ -87,18 +101,38 @@ static ssize_t modlist_write(struct file *filp, const char __user *buf, size_t l
 static ssize_t modlist_read(struct file *filp, char __user *buf, size_t len, loff_t *off) {
 
   int nr_bytes;
+  list_item_t *item=NULL;
+  struct list_head* cur_node=NULL;
+  char msg[BUF_LEN];
+  char msgtmp[BUF_LEN];
+  msg[0] = '\0';
 
   if ((*off) > 0) /* Tell the application that there is nothing left to read */
       return 0;
 
-  nr_bytes=strlen(modlist);
+  /* Listamos los elementos de la lista */
+  list_for_each(cur_node, &mylist) {
+    /* item points to the structure wherein the links are embedded */
+    item = list_entry(cur_node,list_item_t, links);
+    sprintf(msgtmp, "%i", item->data);
+    strcat(msgtmp, "\n");
+    strcat(msg, msgtmp);
+  }
+  strcat(msg, "\0");
+
+  printk(KERN_INFO "Listando elementos %s\n", msg);
+
+  nr_bytes=strlen(msg);
+  printk(KERN_INFO "Numero de bytes de msg %i\n", nr_bytes);
 
   if (len<nr_bytes)
     return -ENOSPC;
 
     /* Transfer data from the kernel to userspace */
-  if (copy_to_user(buf, modlist,nr_bytes))
+  if (copy_to_user(buf, msg, nr_bytes))
     return -EINVAL;
+
+  printk(KERN_INFO "Datos espacio de usuario %s\n", buf);
 
   (*off)+=len;  /* Update the file pointer */
 
