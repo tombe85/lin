@@ -34,6 +34,7 @@ void init_mylist(void) {
 static ssize_t modlist_write(struct file *filp, const char __user *buf, size_t len, loff_t *off) {
   int available_space = BUF_LEN-1;
   int num;
+  char cadena[BUF_LEN];
   list_item_t *mynodo;
 
   if ((*off) > 0) /* The application can write in this entry just once !! */
@@ -60,26 +61,30 @@ static ssize_t modlist_write(struct file *filp, const char __user *buf, size_t l
     mynodo->data = num;
     /* Añadimos el nodo a la lista */
     list_add_tail(&mynodo->links, &mylist);
+    mynodo = NULL;
     printk(KERN_INFO "Aniadido el elemento %i a la lista\n", num);
 
   }
   else if(sscanf(&modlist[0],"remove %i",&num)) {
 
-    //list_item_t *item=NULL;
+    list_item_t *item=NULL;
     struct list_head* cur_node=NULL;
-    list_for_each(cur_node, &mylist) {
+    struct list_head* aux=NULL;
+
+    list_for_each_safe(cur_node, aux, &mylist) {
       /* item points to the structure wherein the links are embedded */
-      mynodo = list_entry(cur_node,list_item_t, links);
-      if(mynodo->data == num) {
-        printk(KERN_INFO "Borrando elemento %i\n", mynodo->data);
+      item = list_entry(cur_node,list_item_t, links);
+      if(item->data == num) {
+        printk(KERN_INFO "Borrando elemento %i\n", item->data);
         list_del(cur_node);
-        vfree(mynodo);
+        vfree(item);
       }
     }
   }
-  else if(sscanf(&modlist[0],"cleanup")) {
+  else if(sscanf(&modlist[0],"%s", cadena) && strcmp("cleanup", cadena)==0) {
     struct list_head* cur_node=NULL;
-    list_for_each(cur_node, &mylist) {
+    struct list_head* aux=NULL;
+    list_for_each_safe(cur_node, aux, &mylist) {
       /* item points to the structure wherein the links are embedded */
       mynodo = list_entry(cur_node,list_item_t, links);
       printk(KERN_INFO "Borrando elemento %i\n", mynodo->data);
