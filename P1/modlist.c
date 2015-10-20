@@ -106,11 +106,16 @@ static ssize_t modlist_write(struct file *filp, const char __user *buf, size_t l
 		}
       }
     }
-  }else if(sscanf(&modlist[0],"%s", cadena) && strcmp("cleanup", cadena)==0) {
+  }else if(sscanf(&modlist[0],"%s", cadena){
+    if(strcmp("cleanup", cadena)==0) {
 	
-	/* Limpiamos la lista entera */
-    cleanUpList();
-    
+      /* Limpiamos la lista entera */
+      cleanUpList();
+  
+    } else if(strcmp("sort", cadena) == 0){
+      /* Ordenamos cadena */
+      
+    }
   }else {
     // retornar un codigo de error correspondiente (instruccion incorrecta)
     return -EINVAL;
