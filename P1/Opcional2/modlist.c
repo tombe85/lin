@@ -29,8 +29,8 @@ typedef struct {
 void cleanUpList(void){
   /* Si la lista no esta vacia */
   if(list_empty(&mylist) == 0) {
-  	list_item_t *mynodo;
-  	struct list_head* cur_node=NULL;
+    list_item_t *mynodo;
+    struct list_head* cur_node=NULL;
     struct list_head* aux=NULL;
 
     /* Recorremos la lista */
@@ -43,7 +43,7 @@ void cleanUpList(void){
       vfree(mynodo);
     }
     /* Informamos */
-  	printk(KERN_INFO "Modlist: List cleaned up\n");
+    printk(KERN_INFO "Modlist: List cleaned up\n");
   }
   else
     printk(KERN_INFO "Modlist: List empty\n");
@@ -53,10 +53,11 @@ void cleanUpList(void){
 /* Función write */
 static ssize_t modlist_write(struct file *filp, const char __user *buf, size_t len, loff_t *off) {
   int available_space = BUF_LEN-1;
-  int num;					//Numero leído en add/remove
-  char cadena[BUF_LEN];		//Cadena escrita en /proc
-  char modlist[BUF_LEN];	//Copia de buffer de usuario
-  list_item_t *mynodo;		//nodo a añadir/eliminar
+  int num;          //Numero leído en add/remove
+  char entrada[MAX_CHAR];
+  char cadena[BUF_LEN];   //Cadena escrita en /proc
+  char modlist[BUF_LEN];  //Copia de buffer de usuario
+  list_item_t *mynodo;    //nodo a añadir/eliminar
 
   /* The application can write in this entry just once !! */
   if ((*off) > 0)
@@ -71,18 +72,18 @@ static ssize_t modlist_write(struct file *filp, const char __user *buf, size_t l
   if (copy_from_user( &modlist[0], buf, len ))
     return -EFAULT;
 
-  modlist[len] = '\0'; 	/* Add the '\0' */
+  modlist[len] = '\0';  /* Add the '\0' */
   *off+=len;            /* Update the file pointer */
 
   /* Leemos ordenes */
-  if(sscanf(&modlist[0],"add %i",&num)) {
+  if(sscanf(&modlist[0],"add %s", entrada)) {
 
     /* Creamos el nuevo nodo */
     mynodo = (list_item_t*) vmalloc(sizeof(list_item_t));
 
     /* Guardamos el valor leido */
     //mynodo->data = num;
-    strcpy(mynodo->data, );
+    strcpy(mynodo->data, entrada);
 
     /* Añadimos el nodo a la lista */
     list_add_tail(&mynodo->links, &mylist);
@@ -99,20 +100,20 @@ static ssize_t modlist_write(struct file *filp, const char __user *buf, size_t l
       struct list_head* aux=NULL;
       int deletes = 0;
 
-  	  /* Para cada nodo de la lista comprobamos si contiene num */
+      /* Para cada nodo de la lista comprobamos si contiene num */
       list_for_each_safe(cur_node, aux, &mylist) {
         mynodo = list_entry(cur_node,list_item_t, links);
         if(mynodo->data == num) {
-      		/* Eliminamos de la lista */
+          /* Eliminamos de la lista */
             list_del(cur_node);
           /* Liberamos memoria dinámica */
           vfree(mynodo);
           /* Mostramos info del kernel una sola vez*/
           if(deletes == 0){
-      			printk(KERN_INFO "Modlist: Element %i deleted from list\n", num);
-      			deletes++;
+            printk(KERN_INFO "Modlist: Element %i deleted from list\n", num);
+            deletes++;
           }
-  		  }
+        }
       }
     }
     else
@@ -136,11 +137,11 @@ static ssize_t modlist_write(struct file *filp, const char __user *buf, size_t l
 /* Función read */
 static ssize_t modlist_read(struct file *filp, char __user *buf, size_t len, loff_t *off) {
 
-  int nr_bytes;						// Bytes leídos
-  list_item_t *item=NULL;			//Nodo a leer
+  int nr_bytes;           // Bytes leídos
+  list_item_t *item=NULL;     //Nodo a leer
   struct list_head* cur_node=NULL;
-  char msg[BUF_LEN];				//Mensaje final
-  char msgtmp[BUF_LEN];				//Mensajes temporales
+  char msg[BUF_LEN];        //Mensaje final
+  char msgtmp[BUF_LEN];       //Mensajes temporales
   msg[0] = '\0';
 
   if ((*off) > 0) /* Tell the application that there is nothing left to read */
@@ -184,19 +185,19 @@ static const struct file_operations proc_entry_fops = {
 
 int init_modlist_module( void )
 {
-	/* Creamos la entrada de proc */
-	proc_entry = proc_create( "modlist", 0666, NULL, &proc_entry_fops);
-	if (proc_entry == NULL) {
-	  printk(KERN_INFO "Modlist: Can't create /proc entry\n");
-	  return -ENOMEM;
-	} else {
-	  printk(KERN_INFO "Modlist: Module loaded\n");
-	}
+  /* Creamos la entrada de proc */
+  proc_entry = proc_create( "modlist", 0666, NULL, &proc_entry_fops);
+  if (proc_entry == NULL) {
+    printk(KERN_INFO "Modlist: Can't create /proc entry\n");
+    return -ENOMEM;
+  } else {
+    printk(KERN_INFO "Modlist: Module loaded\n");
+  }
 
-	/* Inicializamos la lista */
-	INIT_LIST_HEAD(&mylist);
+  /* Inicializamos la lista */
+  INIT_LIST_HEAD(&mylist);
 
-	return 0;
+  return 0;
 }
 
 
