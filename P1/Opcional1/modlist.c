@@ -5,6 +5,7 @@
 #include <linux/vmalloc.h>
 #include <asm-generic/uaccess.h>
 #include <linux/ftrace.h>
+#include <linux/sort.h>
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Modlist Kernel Module - FDI-UCM");
@@ -17,6 +18,7 @@ static struct proc_dir_entry *proc_entry;
 
 /* Lista enlazada */
 struct list_head mylist;
+int count = 0;
 
 /* Nodos de la lista */
 typedef struct {
@@ -28,20 +30,74 @@ typedef struct {
 void cleanUpList(void){
 	list_item_t *mynodo;
 	struct list_head* cur_node=NULL;
-    struct list_head* aux=NULL;
+  struct list_head* aux=NULL;
 
-    /* Recorremos la lista */
-    list_for_each_safe(cur_node, aux, &mylist) {
-      mynodo = list_entry(cur_node,list_item_t, links);
-      /* Eliminamos nodo de la lista */
-      list_del(cur_node);
+  /* Recorremos la lista */
+  list_for_each_safe(cur_node, aux, &mylist) {
+    mynodo = list_entry(cur_node,list_item_t, links);
+    /* Eliminamos nodo de la lista */
+    list_del(cur_node);
 
-      /*Liberamos memoria dinámica del nodo */
-      vfree(mynodo);
-    }
+    /*Liberamos memoria dinámica del nodo */
+    vfree(mynodo);
+  }
+  count = 0;
+}
 
-    /* Informamos */
-	printk(KERN_INFO "Modlist: List cleaned up\n");
+/* Funcion de comparacion */
+int cmpElement(const void *a, const void *b){
+  int *aa = (int *) a;
+  int *bb = (int *) b;
+  if(*aa > *bb){
+    return 1;
+  }else{
+    return -1;
+  }
+}
+
+/* Funcion de cambio */
+void swapp(void * a, void * b, int size){
+  void *aux = a;
+  a = b;
+  b = aux;
+}
+
+void addElement(int num){
+  list_item_t *mynodo;		//nodo a añadir/eliminar
+  /* Creamos el nuevo nodo */
+  mynodo = (list_item_t*) vmalloc(sizeof(list_item_t));
+  
+  /* Guardamos el valor leido */
+  mynodo->data = num;
+  
+  /* Añadimos el nodo a la lista */
+  list_add_tail(&mynodo->links, &mylist);
+  count++;
+}
+
+/* Funcion que ordena la lista */
+void sortlist(void){
+  int *arr;
+  int i = 0, j = 0;
+  list_item_t *mynodo;
+	struct list_head* cur_node=NULL;
+  struct list_head* aux=NULL;
+  
+  arr = (int *) vmalloc(count*sizeof(int));
+
+  /* Recorremos la lista */
+  list_for_each_safe(cur_node, aux, &mylist) {
+    mynodo = list_entry(cur_node,list_item_t, links);
+    
+    arr[i] = mynodo->data;
+    i++;
+  }
+  sort(&arr[0], count, sizeof(int), cmpElement, NULL);
+  cleanUpList();
+  for(j=0; j < i; j++){
+    addElement(arr[j]);
+  }
+  vfree(arr);
 }
 
 /* Función write */
@@ -70,15 +126,7 @@ static ssize_t modlist_write(struct file *filp, const char __user *buf, size_t l
 
   /* Leemos ordenes */
   if(sscanf(&modlist[0],"add %i",&num)) {
-
-    /* Creamos el nuevo nodo */
-    mynodo = (list_item_t*) vmalloc(sizeof(list_item_t));
-
-    /* Guardamos el valor leido */
-    mynodo->data = num;
-
-    /* Añadimos el nodo a la lista */
-    list_add_tail(&mynodo->links, &mylist);
+    addElement(num);
 
     /* Informamos */
     printk(KERN_INFO "Modlist: Added element %i to the list\n", num);
@@ -90,7 +138,6 @@ static ssize_t modlist_write(struct file *filp, const char __user *buf, size_t l
     if(list_empty(&mylist) == 0) {
       struct list_head* cur_node=NULL;
       struct list_head* aux=NULL;
-      int deletes = 0;
 
   	  /* Para cada nodo de la lista comprobamos si contiene num */
       list_for_each_safe(cur_node, aux, &mylist) {
@@ -100,13 +147,10 @@ static ssize_t modlist_write(struct file *filp, const char __user *buf, size_t l
             list_del(cur_node);
           /* Liberamos memoria dinámica */
           vfree(mynodo);
-          /* Mostramos info del kernel una sola vez*/
-          if(deletes == 0){
-      			printk(KERN_INFO "Modlist: Element %i deleted from list\n", num);
-      			deletes++;
-          }
+          count--;
   		  }
       }
+      printk(KERN_INFO "Modlist: Element %i deleted from list\n", num);
     }
     else
       printk(KERN_INFO "Modlist: List empty\n");
@@ -117,6 +161,8 @@ static ssize_t modlist_write(struct file *filp, const char __user *buf, size_t l
       if(list_empty(&mylist) == 0) {
         /* Limpiamos la lista entera */
         cleanUpList();
+        /* Informamos */
+        printk(KERN_INFO "Modlist: List cleaned up\n");
       }
       else
         printk(KERN_INFO "Modlist: List empty\n");
@@ -125,6 +171,8 @@ static ssize_t modlist_write(struct file *filp, const char __user *buf, size_t l
       /* Si la lista no esta vacia */
       if(list_empty(&mylist) == 0) {
         /* Ordenamos cadena */
+        sortlist();
+        printk(KERN_INFO "Modlist: List sorted\n");
       }
       else
         printk(KERN_INFO "Modlist: List empty\n");
