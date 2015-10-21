@@ -11,6 +11,7 @@ MODULE_DESCRIPTION("Modlist Kernel Module - FDI-UCM");
 MODULE_AUTHOR("Miguel Higuera Romero & Alejandro Nicolás Ibarra Loik");
 
 #define BUF_LEN 100
+#define MAX_CHAR 20
 
 /* Entrada de proc */
 static struct proc_dir_entry *proc_entry;
@@ -20,7 +21,7 @@ struct list_head mylist;
 
 /* Nodos de la lista */
 typedef struct {
-  int data;
+  char data[MAX_CHAR];
   struct list_head links;
 } list_item_t;
 
@@ -80,7 +81,8 @@ static ssize_t modlist_write(struct file *filp, const char __user *buf, size_t l
     mynodo = (list_item_t*) vmalloc(sizeof(list_item_t));
 
     /* Guardamos el valor leido */
-    mynodo->data = num;
+    //mynodo->data = num;
+    strcpy(mynodo->data, );
 
     /* Añadimos el nodo a la lista */
     list_add_tail(&mynodo->links, &mylist);
