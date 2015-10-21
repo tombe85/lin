@@ -18,7 +18,7 @@ static struct proc_dir_entry *proc_entry;
 
 /* Lista enlazada */
 struct list_head mylist;
-int count = 0;
+int count;
 
 /* Nodos de la lista */
 typedef struct {
@@ -46,30 +46,29 @@ void cleanUpList(void){
 
 /* Funcion de comparacion */
 int cmpElement(const void *a, const void *b){
-  int *aa = (int *) a;
-  int *bb = (int *) b;
-  if(*aa > *bb){
-    return 1;
-  }else{
-    return -1;
-  }
+  list_item_t *aa = *((list_item_t **) a);
+  list_item_t *bb = *((list_item_t **) b);
+  return aa->data - bb->data;
 }
 
 /* Funcion de cambio */
 void swapp(void * a, void * b, int size){
-  void *aux = a;
-  a = b;
-  b = aux;
+  list_item_t *aa = *((list_item_t **) a);
+  list_item_t *bb = *((list_item_t **) b);
+
+  int aux = aa->data;
+  aa->data = bb->data;
+  bb->data = aux;
 }
 
 void addElement(int num){
   list_item_t *mynodo;		//nodo a añadir/eliminar
   /* Creamos el nuevo nodo */
   mynodo = (list_item_t*) vmalloc(sizeof(list_item_t));
-  
+
   /* Guardamos el valor leido */
   mynodo->data = num;
-  
+
   /* Añadimos el nodo a la lista */
   list_add_tail(&mynodo->links, &mylist);
   count++;
@@ -77,27 +76,18 @@ void addElement(int num){
 
 /* Funcion que ordena la lista */
 void sortlist(void){
-  int *arr;
-  int i = 0, j = 0;
+  list_item_t *arr[count];
+  int i = 0;
   list_item_t *mynodo;
 	struct list_head* cur_node=NULL;
-  struct list_head* aux=NULL;
-  
-  arr = (int *) vmalloc(count*sizeof(int));
 
   /* Recorremos la lista */
-  list_for_each_safe(cur_node, aux, &mylist) {
+  list_for_each(cur_node, &mylist) {
     mynodo = list_entry(cur_node,list_item_t, links);
-    
-    arr[i] = mynodo->data;
+    arr[i] = mynodo;
     i++;
   }
-  sort(&arr[0], count, sizeof(int), cmpElement, NULL);
-  cleanUpList();
-  for(j=0; j < i; j++){
-    addElement(arr[j]);
-  }
-  vfree(arr);
+  sort(&arr[0], count, sizeof(list_item_t *), cmpElement, swapp);
 }
 
 /* Función write */
@@ -247,6 +237,8 @@ int init_modlist_module( void )
 
 	/* Inicializamos la lista */
 	INIT_LIST_HEAD(&mylist);
+
+  count = 0;
 
 	return 0;
 }
