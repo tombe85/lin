@@ -161,6 +161,9 @@ static ssize_t modlist_read(struct file *filp, char __user *buf, size_t len, lof
   /* Cargamos los bytes leídos */
   nr_bytes=strlen(msg);
 
+  /*if (len<nr_bytes)
+    return -ENOSPC;*/
+
   /* Enviamos datos al espacio de ususario */
   if (copy_to_user(buf, msg, nr_bytes))
     return -EINVAL;
