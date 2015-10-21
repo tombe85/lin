@@ -26,10 +26,8 @@ typedef struct {
 
 /* Función que limpia la lista entera */
 void cleanUpList(void){
-  /* Si la lista no esta vacia */
-  if(list_empty(&mylist) == 0) {
-  	list_item_t *mynodo;
-  	struct list_head* cur_node=NULL;
+	list_item_t *mynodo;
+	struct list_head* cur_node=NULL;
     struct list_head* aux=NULL;
 
     /* Recorremos la lista */
@@ -41,12 +39,9 @@ void cleanUpList(void){
       /*Liberamos memoria dinámica del nodo */
       vfree(mynodo);
     }
-    /* Informamos */
-  	printk(KERN_INFO "Modlist: List cleaned up\n");
-  }
-  else
-    printk(KERN_INFO "Modlist: List empty\n");
 
+    /* Informamos */
+	printk(KERN_INFO "Modlist: List cleaned up\n");
 }
 
 /* Función write */
@@ -118,10 +113,21 @@ static ssize_t modlist_write(struct file *filp, const char __user *buf, size_t l
   }
   else if(sscanf(&modlist[0],"%s", cadena)){
     if(strcmp("cleanup", cadena)==0) {
-
-      /* Limpiamos la lista entera */
-      cleanUpList();
-
+      /* Si la lista no esta vacia */
+      if(list_empty(&mylist) == 0) {
+        /* Limpiamos la lista entera */
+        cleanUpList();
+      }
+      else
+        printk(KERN_INFO "Modlist: List empty\n");
+    }
+    else if(strcmp("sort", cadena) == 0){
+      /* Si la lista no esta vacia */
+      if(list_empty(&mylist) == 0) {
+        /* Ordenamos cadena */
+      }
+      else
+        printk(KERN_INFO "Modlist: List empty\n");
     }
   }
   else {
