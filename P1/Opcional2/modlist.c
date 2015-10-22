@@ -27,35 +27,28 @@ typedef struct {
 
 /* Función que limpia la lista entera */
 void cleanUpList(void){
-  /* Si la lista no esta vacia */
-  if(list_empty(&mylist) == 0) {
     list_item_t *mynodo;
     struct list_head* cur_node=NULL;
     struct list_head* aux=NULL;
 
     /* Recorremos la lista */
     list_for_each_safe(cur_node, aux, &mylist) {
-      mynodo = list_entry(cur_node,list_item_t, links);
-      /* Eliminamos nodo de la lista */
-      list_del(cur_node);
+        mynodo = list_entry(cur_node,list_item_t, links);
+        /* Eliminamos nodo de la lista */
+        list_del(cur_node);
 
-      /*Liberamos memoria dinámica del nodo */
-      vfree(mynodo);
+        /*Liberamos memoria dinámica del nodo */
+        vfree(mynodo);
     }
-    /* Informamos */
-    printk(KERN_INFO "Modlist: List cleaned up\n");
-  }
-  else
-    printk(KERN_INFO "Modlist: List empty\n");
-
 }
+
 
 /* Función write */
 static ssize_t modlist_write(struct file *filp, const char __user *buf, size_t len, loff_t *off) {
   int available_space = BUF_LEN-1;
-  char entrada[MAX_CHAR];
-  char cadena[BUF_LEN];   //Cadena escrita en /proc
-  char modlist[BUF_LEN];  //Copia de buffer de usuario
+  char elemstr[MAX_CHAR];   //Elemento de la lista
+  char procstr[BUF_LEN];   //Cadena escrita en /proc
+  char kbuff[BUF_LEN];  //Copia de buffer de usuario
   list_item_t *mynodo;    //nodo a añadir/eliminar
 
   /* The application can write in this entry just once !! */
@@ -68,22 +61,26 @@ static ssize_t modlist_write(struct file *filp, const char __user *buf, size_t l
   }
 
   /* Transfer data from user to kernel space */
-  if (copy_from_user( &modlist[0], buf, len ))
+  if (copy_from_user( &kbuff[0], buf, len ))
     return -EFAULT;
 
   *off+=len;            /* Update the file pointer */
 
   /* Leemos ordenes */
-  if(sscanf(&modlist[0],"add %s", entrada)) {
+  if(sscanf(&kbuff[0],"add %s", elemstr)) {
 
     /* Creamos el nuevo nodo */
     mynodo = (list_item_t*) vmalloc(sizeof(list_item_t));
 
     /* Quitamos el \n de la cadena */
-    modlist[len-1] = '\0';
+    kbuff[len-1] = '\0';
+
+    /* Si la cadena supera el máximo de caracteres se limita */
+    if(len - 4 > MAX_CHAR)
+        kbuff[MAX_CHAR + 3] = '\0';
 
     /* Guardamos el valor leido de la entrada desplazada 4 bytes (longitud 'add ')*/
-    strcpy(mynodo->data, &modlist[0]+(4*sizeof(char)));
+    strcpy(mynodo->data, &kbuff[0]+(4*sizeof(char)));
 
     /* Añadimos el nodo a la lista */
     list_add_tail(&mynodo->links, &mylist);
@@ -92,10 +89,10 @@ static ssize_t modlist_write(struct file *filp, const char __user *buf, size_t l
     printk(KERN_INFO "Modlist: Added element %s to the list\n",mynodo->data);
 
   }
-  else if(sscanf(&modlist[0],"remove %s", entrada)) {
+  else if(sscanf(&kbuff[0],"remove %s", elemstr)) {
 
     /* Quitamos el \n de la cadena */
-    modlist[len-1] = '\0';
+    kbuff[len-1] = '\0';
 
     /* Si la lista no esta vacia */
     if(list_empty(&mylist) == 0) {
@@ -106,27 +103,31 @@ static ssize_t modlist_write(struct file *filp, const char __user *buf, size_t l
       list_for_each_safe(cur_node, aux, &mylist) {
         mynodo = list_entry(cur_node,list_item_t, links);
         /* Comparamos el dato almacenado con la entrada desplazada 7 bytes (numero de caracteres de 'remove ')*/
-        if(strcmp(mynodo->data, &modlist[0]+(7*sizeof(char)))== 0) {
+        if(strcmp(mynodo->data, &kbuff[0]+(7*sizeof(char)))== 0) {
           /* Eliminamos de la lista */
           list_del(cur_node);
           /* Liberamos memoria dinámica */
           vfree(mynodo);
           /* Mostramos info del kernel una sola vez*/
           if(deletes == 0){
-            printk(KERN_INFO "Modlist: Element %s deleted from list\n", &modlist[0]+(7*sizeof(char)));
+            printk(KERN_INFO "Modlist: Element %s deleted from list\n", &kbuff[0]+(7*sizeof(char)));
             deletes++;
           }
         }
       }
-    }
-    else
-      printk(KERN_INFO "Modlist: List empty\n");
+    }else
+      printk(KERN_INFO "Modlist: Can't delete elements. The list is empty\n");
   }
-  else if(sscanf(&modlist[0],"%s", cadena)){
-    if(strcmp("cleanup", cadena)==0) {
+  else if(sscanf(&kbuff[0],"%s", procstr)){
+    if(strcmp("cleanup", procstr)==0) {
 
       /* Limpiamos la lista entera */
-      cleanUpList();
+      if(list_empty(&mylist) == 0) {
+        cleanUpList();
+        /* Informamos */
+        printk(KERN_INFO "Modlist: List cleaned up\n");
+      }else
+        printk(KERN_INFO "Modlist: Can't cleanup list. The list is empty\n");
 
     }
   }
@@ -143,9 +144,9 @@ static ssize_t modlist_read(struct file *filp, char __user *buf, size_t len, lof
   int nr_bytes;           // Bytes leídos
   list_item_t *item=NULL;     //Nodo a leer
   struct list_head* cur_node=NULL;
-  char msg[BUF_LEN];        //Mensaje final
-  char msgtmp[BUF_LEN];       //Mensajes temporales
-  msg[0] = '\0';
+  char kbuff[BUF_LEN];        //Mensaje final
+  char tmpstr[BUF_LEN];       //Mensajes temporales
+  kbuff[0] = '\0';
 
   if ((*off) > 0) /* Tell the application that there is nothing left to read */
       return 0;
@@ -155,17 +156,16 @@ static ssize_t modlist_read(struct file *filp, char __user *buf, size_t len, lof
     item = list_entry(cur_node,list_item_t, links);
 
     /* Escribimos en msgtmp el dato, el \n y lo concatenamos al msg final */
-    sprintf(msgtmp, "%s", item->data);
-    strcat(msgtmp, "\n");
-    strcat(msg, msgtmp);
+    sprintf(tmpstr, "%s\n", item->data);
+    strcat(kbuff, tmpstr);
   }
-  strcat(msg, "\0");
+  strcat(kbuff, "\0");
 
   /* Cargamos los bytes leídos */
-  nr_bytes=strlen(msg);
+  nr_bytes=strlen(kbuff);
 
   /* Enviamos datos al espacio de ususario */
-  if (copy_to_user(buf, msg, nr_bytes))
+  if (copy_to_user(buf, kbuff, nr_bytes))
     return -EINVAL;
 
   (*off)+=len;  /* Update the file pointer */
@@ -204,7 +204,8 @@ int init_modlist_module( void )
 void exit_modlist_module( void )
 {
   /* Limpiamos la lista para liberar memoria */
-  cleanUpList();
+  if(list_empty(&mylist) == 0)
+    cleanUpList();
 
   /* Eliminamos la entrada de proc */
   remove_proc_entry("modlist", NULL);
