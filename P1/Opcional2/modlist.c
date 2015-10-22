@@ -53,7 +53,6 @@ void cleanUpList(void){
 /* Función write */
 static ssize_t modlist_write(struct file *filp, const char __user *buf, size_t len, loff_t *off) {
   int available_space = BUF_LEN-1;
-  int num;          //Numero leído en add/remove
   char entrada[MAX_CHAR];
   char cadena[BUF_LEN];   //Cadena escrita en /proc
   char modlist[BUF_LEN];  //Copia de buffer de usuario
@@ -72,7 +71,6 @@ static ssize_t modlist_write(struct file *filp, const char __user *buf, size_t l
   if (copy_from_user( &modlist[0], buf, len ))
     return -EFAULT;
 
-  modlist[len] = '\0';  /* Add the '\0' */
   *off+=len;            /* Update the file pointer */
 
   /* Leemos ordenes */
@@ -81,18 +79,23 @@ static ssize_t modlist_write(struct file *filp, const char __user *buf, size_t l
     /* Creamos el nuevo nodo */
     mynodo = (list_item_t*) vmalloc(sizeof(list_item_t));
 
-    /* Guardamos el valor leido */
-    //mynodo->data = num;
-    strcpy(mynodo->data, entrada);
+    /* Quitamos el \n de la cadena */
+    modlist[len-1] = '\0';
+
+    /* Guardamos el valor leido de la entrada desplazada 4 bytes (longitud 'add ')*/
+    strcpy(mynodo->data, &modlist[0]+(4*sizeof(char)));
 
     /* Añadimos el nodo a la lista */
     list_add_tail(&mynodo->links, &mylist);
 
     /* Informamos */
-    printk(KERN_INFO "Modlist: Added element %s to the list\n", entrada);
+    printk(KERN_INFO "Modlist: Added element %s to the list\n",mynodo->data);
 
   }
-  else if(sscanf(&modlist[0],"remove %s",entrada)) {
+  else if(sscanf(&modlist[0],"remove %s", entrada)) {
+
+    /* Quitamos el \n de la cadena */
+    modlist[len-1] = '\0';
 
     /* Si la lista no esta vacia */
     if(list_empty(&mylist) == 0) {
@@ -100,17 +103,17 @@ static ssize_t modlist_write(struct file *filp, const char __user *buf, size_t l
       struct list_head* aux=NULL;
       int deletes = 0;
 
-      /* Para cada nodo de la lista comprobamos si contiene num */
       list_for_each_safe(cur_node, aux, &mylist) {
         mynodo = list_entry(cur_node,list_item_t, links);
-        if(strcmp(mynodo->data, entrada)==0) {
+        /* Comparamos el dato almacenado con la entrada desplazada 7 bytes (numero de caracteres de 'remove ')*/
+        if(strcmp(mynodo->data, &modlist[0]+(7*sizeof(char)))== 0) {
           /* Eliminamos de la lista */
           list_del(cur_node);
           /* Liberamos memoria dinámica */
           vfree(mynodo);
           /* Mostramos info del kernel una sola vez*/
           if(deletes == 0){
-            printk(KERN_INFO "Modlist: Element %s deleted from list\n", entrada);
+            printk(KERN_INFO "Modlist: Element %s deleted from list\n", &modlist[0]+(7*sizeof(char)));
             deletes++;
           }
         }
