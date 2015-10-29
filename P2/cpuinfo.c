@@ -48,6 +48,9 @@ int main(void)
 
 
     /* Close the file and exit */
-    close(fd);
+    //close(fd);
+    if(syscall(SYS_close, fd) < 0){
+        printf("Error al cerrar el archivo\n");
+    }
     return 0;
 }
