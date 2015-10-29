@@ -26,8 +26,8 @@ int main(void)
     //fd=open("/proc/cpuinfo",O_RDONLY);
 
     if((fd=syscall(SYS_open,"/proc/cpuinfo", O_RDONLY,0666)) < 0) {
-      fprintf(stderr,"Error while reading the file\n");
-      exit(1);
+        fprintf(stderr,"Error while opening the file\n");
+        exit(1);
     }
 
     if (fd<0){
@@ -38,7 +38,7 @@ int main(void)
     /* Loop that reads data from the file and prints its contents to stdout */
     while((read_chars=syscall(SYS_read,fd,buf,BUFSIZE))>0){
         buf[read_chars]='\0';
-        printf("%s",buf);
+        syscall(SYS_write, 0, buf, read_chars);
     }
 
     if (read_chars<0){
@@ -50,7 +50,7 @@ int main(void)
     /* Close the file and exit */
     //close(fd);
     if(syscall(SYS_close, fd) < 0){
-        printf("Error al cerrar el archivo\n");
+        fprintf(stderr, "Error al cerrar el archivo\n");
     }
     return 0;
 }
