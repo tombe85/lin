@@ -22,41 +22,13 @@ struct tty_driver* get_kbd_driver_handler(void){
    return vc_cons[fg_console].d->port.tty->driver;
 }
 
-void set_leds(int mask){
-  switch(mask){
-    case 0:
-      (kbd_driver->ops->ioctl) (vc_cons[fg_console].d->port.tty, KDSETLED,0);
-    break;
-    case 1:
-      (kbd_driver->ops->ioctl) (vc_cons[fg_console].d->port.tty, KDSETLED,0x1);
-    break;
-    case 2:
-      (kbd_driver->ops->ioctl) (vc_cons[fg_console].d->port.tty, KDSETLED,0x2);
-    break;
-    case 3:
-      (kbd_driver->ops->ioctl) (vc_cons[fg_console].d->port.tty, KDSETLED,0x3);
-    break;
-    case 4:
-      (kbd_driver->ops->ioctl) (vc_cons[fg_console].d->port.tty, KDSETLED,0x4);
-    break;
-    case 5:
-      (kbd_driver->ops->ioctl) (vc_cons[fg_console].d->port.tty, KDSETLED,0x5);
-    break;
-    case 6:
-      (kbd_driver->ops->ioctl) (vc_cons[fg_console].d->port.tty, KDSETLED,0x6);
-    break;
-    case 7:
-          (kbd_driver->ops->ioctl) (vc_cons[fg_console].d->port.tty, KDSETLED,0x7);
-    break;
-    default:
-          (kbd_driver->ops->ioctl) (vc_cons[fg_console].d->port.tty, KDSETLED,0x0);
-    break;
-  }
+/* Set led state to that specified by mask */
+inline int set_leds(struct tty_driver* handler, unsigned int mask){
+    return (handler->ops->ioctl) (vc_cons[fg_console].d->port.tty, KDSETLED,mask);
 }
 
 void ledctl_exit(void){
     remove_proc_entry("ledctl", NULL);
-    set_leds(0);
     printk(KERN_INFO "Ledctl: Module unloaded\n");
 }
 
@@ -78,8 +50,7 @@ static ssize_t ledctl_write(struct file *filp, const char __user *buf, size_t le
 
     if(sscanf(&kbuf[0], "%i", &mask)){
       if(mask >= 0 && mask <= 7){
-	set_leds(mask);
-	
+	set_leds(kbd_driver, (unsigned int) mask);
       }else{
 	return -EINVAL;
       }
@@ -107,7 +78,7 @@ static const struct file_operations proc_entry_fops = {
 int ledctl_init(void)
 {
    kbd_driver= get_kbd_driver_handler();
-    set_leds(7);
+
    proc_entry = proc_create( "ledctl", 0666, NULL, &proc_entry_fops);
     if (proc_entry == NULL) {
       printk(KERN_INFO "Ledctl: Can't create /proc entry\n");
