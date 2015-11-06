@@ -13,19 +13,22 @@ SYSCALL_DEFINE1(ledctl,unsigned int,leds)
     unsigned int mask = (unsigned int) leds;
 
     printk(KERN_INFO "Ledctl: system call received.\n");
-    
+
     if(mask >= 0 && mask <= 0x7){
         // Get the driver
         kbd_driver = vc_cons[fg_console].d->port.tty->driver;
-        
+
         // Set leds state
-        (kbd_driver->ops->ioctl) (vc_cons[fg_console].d->port.tty, KDSETLED,mask);
-        
+        if((kbd_driver->ops->ioctl) (vc_cons[fg_console].d->port.tty, KDSETLED,mask) == ENOIOCTLCMD){
+            printk(KERN_INFO "Ledctl: I/O command error.\n");
+            return -ENOIOCTLCMD;
+        }
+
         printk(KERN_INFO "Ledctl: Leds changed.\n");
     }else{
         printk(KERN_INFO "Ledctl: Invalid argument\n");
         return -EINVAL;
     }
-    
+
     return 0;
 }
