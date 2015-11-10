@@ -113,7 +113,6 @@ static ssize_t blink_write(struct file *file, const char *user_buffer,
 {
 	struct usb_blink *dev=file->private_data;
 	int retval = 0;
-	int i=0;
 	unsigned char message[NR_BYTES_BLINK_MSG];
 	static int color_cnt=0;
 	unsigned int color;
@@ -124,7 +123,7 @@ static ssize_t blink_write(struct file *file, const char *user_buffer,
 	char kbuf[BUF_LEN];
 	int leds[8];
 	unsigned int val[8];
-	int i=0;
+	int i=0, j=0;
 	
 	// Ejemplo de ejecucion
 	// echo 1:0x001100,3:0x000007,5:0x090000 > /dev/usb/blinkstick0
@@ -143,16 +142,17 @@ static ssize_t blink_write(struct file *file, const char *user_buffer,
 	*off += len;
 	
 	
-	for(i=0; i<len, i+=11)
-	{
+	//do {
 	
 	  // Recojo los valores de los leds correspondientes
-	  if(sscanf(&kbuf[0]+i, "%i:%0x6", leds[i], val[i]))
+	  if(sscanf(&kbuf[0], "%d:%i", leds[j], val[j]))
 	  {
 	    
-	    if(leds[i] != NULL && leds[i] >= 0 && leds[i] <= 7)
+	    if(leds[j] >= 0 && leds[j] <= 7)
 	    {
 	      
+	      
+	      printk(KERN_INFO "%d:%i\n",leds[j],val[j]);
 	      /*
 		* Como los bits que se le pasan por la enrtada no coinciden con los bits de los leds
 		* hay que hacer una conversion de la entrada al valor correspondiente que ira a los leds
@@ -160,7 +160,7 @@ static ssize_t blink_write(struct file *file, const char *user_buffer,
 		* 
 		status=0;
 		
-		for(i=0; i<3; i++)
+		for(i=0; i<8; i++)
 		{
 		  if(val & (0x1 << i))
 		    
@@ -190,62 +190,18 @@ static ssize_t blink_write(struct file *file, const char *user_buffer,
 	  {
 	    return -EINVAL;
 	  }
+	  
+	  //i+=12;
+	  //j++;
 	
-	}
+	//} while(len >= i && kbuf[i-1] == ',');
 	
 	/*-----------------------*/
 	
 	
 	
-
-	/* Pick a color and get ready for the next invocation*/		
-	color=sample_colors[color_cnt++];
-
-	/* Reset the color counter if necessary */	
-	if (color_cnt == NR_SAMPLE_COLORS)
-		color_cnt=0;
-	
-	/* zero fill*/
-	memset(message,0,NR_BYTES_BLINK_MSG);
-
-	/* Fill up the message accordingly */
-	message[0]='\x05';
-	message[1]=0x00;
-	message[2]=0; 
-	message[3]=((color>>16) & 0xff);
- 	message[4]=((color>>8) & 0xff);
- 	message[5]=(color & 0xff);
-
-
-	for (i=0;i<NR_LEDS;i++){
-
-		message[2]=i; /* Change Led number in message */
-	
-		/* 
-		 * Send message (URB) to the Blinkstick device 
-		 * and wait for the operation to complete 
-		 */
-		retval=usb_control_msg(dev->udev,	
-			 usb_sndctrlpipe(dev->udev,00), /* Specify endpoint #0 */
-			 USB_REQ_SET_CONFIGURATION, 
-			 USB_DIR_OUT| USB_TYPE_CLASS | USB_RECIP_DEVICE,
-			 0x5,	/* wValue */
-			 0, 	/* wIndex=Endpoint # */
-			 message,	/* Pointer to the message */ 
-			 NR_BYTES_BLINK_MSG, /* message's size in bytes */
-			 0);		
-
-		if (retval<0){
-			printk(KERN_ALERT "Executed with retval=%d\n",retval);
-			goto out_error;		
-		}
-	}
-
-	(*off)+=len;
 	return len;
-
-out_error:
-	return retval;	
+	
 }
 
 
