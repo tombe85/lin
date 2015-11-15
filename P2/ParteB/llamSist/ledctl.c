@@ -13,8 +13,28 @@ SYSCALL_DEFINE1(ledctl,unsigned int,leds)
     unsigned int mask = (unsigned int) leds;
 
     printk(KERN_INFO "Ledctl: system call received.\n");
-
+    
+    // Check mask
     if(mask >= 0 && mask <= 0x7){
+        
+        /* Translate mask */
+        switch(mask){
+            case 2:
+                mask = 0x4;
+            break;
+            case 3:
+                mask = 0x5;
+            break;
+            case 4:
+                mask = 0x2;
+            break;
+            case 5:
+                mask = 0x3;
+            break;
+            default:
+            break;
+        }
+        
         // Get the driver
         kbd_driver = vc_cons[fg_console].d->port.tty->driver;
 
