@@ -36,8 +36,8 @@ int main(void){
 	
 	int i=0;
 	int combinacion[NUM_VUELTAS];
-	int suma=0;
-	int sumajugador=0;
+	int entrada[NUM_VUELTAS];
+	int acierto=1;
 	int secuencia=0;
 	int salir = 0;
 	int aleat;
@@ -50,8 +50,8 @@ int main(void){
 		for(i=0; i<NUM_VUELTAS;i++) {
 			aleat = rand() % (4 - 1 +1) + 1;
 			combinacion[i] = aleat;
-			suma += aleat;
-			//printf("%d\n", combinacion[i]);
+			//suma += aleat;
+			printf("%d\n", combinacion[i]);
 			pintaLeds(sample_colors[aleat]);
 			usleep(1000000 - dificultad);
 			pintaLeds(sample_off[aleat]);
@@ -63,19 +63,22 @@ int main(void){
 		//printf("%d\n", suma);
 		
 		if(secuencia >= 1000000 && secuencia <= 9999999) {
-			sumajugador += secuencia / 1000000;
-			sumajugador += (secuencia % 1000000) / 100000;
-			sumajugador += ((secuencia % 1000000) % 100000) / 10000;
-			sumajugador += (((secuencia % 1000000) % 100000) % 10000) / 1000;
-			sumajugador += ((((secuencia % 1000000) % 100000) % 10000) % 1000) / 100;
-			sumajugador += (((((secuencia % 1000000) % 100000) % 10000) % 1000) % 100) / 10;
-			sumajugador += ((((((secuencia % 1000000) % 100000) % 10000) % 1000) % 100) % 10) / 1;
+			entrada[0] = secuencia / 1000000;
+			entrada[1] = (secuencia % 1000000) / 100000;
+			entrada[2] = ((secuencia % 1000000) % 100000) / 10000;
+			entrada[3] = (((secuencia % 1000000) % 100000) % 10000) / 1000;
+			entrada[4] = ((((secuencia % 1000000) % 100000) % 10000) % 1000) / 100;
+			entrada[5] = (((((secuencia % 1000000) % 100000) % 10000) % 1000) % 100) / 10;
+			entrada[6] = ((((((secuencia % 1000000) % 100000) % 10000) % 1000) % 100) % 10) / 1;
 		}
 		
 		//printf("%d\n", sumajugador);
 		
 		
-		if(suma == sumajugador)
+		for(i=0; i<NUM_VUELTAS; i++)
+			acierto &= combinacion[i] == entrada[i];
+		
+		if(acierto)
 			printf("Has acertado\n");
 		else {
 			salir = 1;
@@ -93,6 +96,8 @@ int main(void){
 		printf("Secuencia introducida: %d\n", secuencia);
 		
 		dificultad += 100000;
+		
+		acierto = 1;
 	
 	}
 	
