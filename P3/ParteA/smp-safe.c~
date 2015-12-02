@@ -290,10 +290,10 @@ void exit_modlist_module( void )
         cleanUpList();
 
     /* Eliminamos la entrada de proc */
-    remove_proc_entry("smp-safe", NULL);
+    remove_proc_entry("modlist", NULL);
 
     /* Informamos */
-    printk(KERN_INFO "SMP-Safe: Module unloaded.\n");
+    printk(KERN_INFO "Modlist: Module unloaded.\n");
 }
 
 
