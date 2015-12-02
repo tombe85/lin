@@ -138,7 +138,8 @@ static ssize_t modlist_read(struct file *filp, char __user *buf, size_t len, lof
   list_item_t *item=NULL;			//Nodo a leer
   struct list_head* cur_node=NULL;
   char msg[BUF_LEN];				//Mensaje final
-  char msgtmp[BUF_LEN];				//Mensajes temporales
+  char msgtmp[BUF_LEN];
+  int cerrojo = 1;				//Mensajes temporales
   msg[0] = '\0';
 
   if ((*off) > 0) /* Tell the application that there is nothing left to read */
@@ -151,7 +152,11 @@ static ssize_t modlist_read(struct file *filp, char __user *buf, size_t len, lof
     /* Escribimos en msgtmp el dato, el \n y lo concatenamos al msg final */
     sprintf(msgtmp, "%i", item->data);
     strcat(msgtmp, "\n");
-    strcat(msg, msgtmp);
+	if(strlen(msg) < BUF_LEN - strlen(msgtmp) && cerrojo){
+   	 strcat(msg, msgtmp);
+	}else{
+		cerrojo = 0;
+	}
   }
   strcat(msg, "\0");
 

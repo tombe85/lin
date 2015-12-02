@@ -83,33 +83,34 @@ void swapp(void * a, void * b, int size){
 /* Función que añade un elemento a la lista */
 void addElement(int num){
     list_item_t *mynodo;
-
+    
     /* Reservamos memoria dinámica para el nuevo nodo */
     mynodo = (list_item_t*) vmalloc(sizeof(list_item_t));
 
+    spin_lock(&sp);
     /* Guardamos el valor leido */
     mynodo->data = num;
 
-    spin_lock(&sp);
-
     /* Añadimos el nodo a la lista */
     list_add_tail(&mynodo->links, &mylist);
-
-    spin_unlock(&sp);
-
     /** Incrementamos el contador de nodos */
     listCount++;
+    spin_unlock(&sp);
+
+    
 }
 
 /* Funcion que ordena la lista */
 void sortlist(void){
+    spin_lock(&sp);    
+
     list_item_t *arr[listCount];    // Array de punteros que guarda las
                                     //direcciones de los nodos de la lista
     int i = 0;
     list_item_t *mynodo;            // Puntero hacia el nodo actual
     struct list_head* cur_node=NULL;
 
-    spin_lock(&sp);
+    
 
     /* Recorremos la lista */
     list_for_each(cur_node, &mylist) {
@@ -227,18 +228,24 @@ static ssize_t modlist_read(struct file *filp, char __user *buf, size_t len, lof
     char kbuff[BUF_LEN];			    //buffer final
     char strtmp[BUF_LEN];				//cadenas temporales
     kbuff[0] = '\0';
+	int cerrojo = 1;
 
     if ((*off) > 0) /* Tell the application that there is nothing left to read */
         return 0;
 
     /* Listamos los elementos de la lista */
+    spin_lock(&sp);
     list_for_each(cur_node, &mylist) {
         item = list_entry(cur_node,list_item_t, links);
-
         /* Escribimos en msgtmp el dato, el \n y lo concatenamos al kbuff final */
         sprintf(strtmp, "%i\n", item->data);
-        strcat(kbuff, strtmp);
+	if(strlen(kbuff) < BUF_LEN - strlen(strtmp) && cerrojo){
+  	      strcat(kbuff, strtmp);
+	}else{
+		cerrojo = 0;
+	}
     }
+    spin_unlock(&sp);
     strcat(kbuff, "\0");
 
     /* Cargamos los bytes leídos */
