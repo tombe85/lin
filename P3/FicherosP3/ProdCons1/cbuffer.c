@@ -63,7 +63,7 @@ void insert_cbuffer_t ( cbuffer_t* cbuffer, void* new_item )
 {
 	unsigned int pos=0;
 
-/* The buffer is full */
+	/* The buffer is full */
 	if ( cbuffer->size == cbuffer->max_size )
 	{
 		/* Overwriting head position */

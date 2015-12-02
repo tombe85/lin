@@ -22,7 +22,8 @@ static cbuffer_t* cbuf; /* Buffer circular compartido */
 struct semaphore elementos,huecos; /* Semaforos para productor y consumidor */
 struct semaphore mtx; /* Para garantizar exclusión mutua en acceso a buffer */
 
-static ssize_t prodcons_write(struct file *filp, const char __user *buf, size_t len, loff_t *off) {
+static ssize_t prodcons_write(struct file *filp, const char __user *buf, size_t len, loff_t *off)
+{
  
   char kbuf[MAX_CHARS_KBUF+1];
   int val=0;
@@ -43,7 +44,7 @@ static ssize_t prodcons_write(struct file *filp, const char __user *buf, size_t 
   
   if (sscanf(kbuf,"%i",&val)!=1)
   {
-	return -EINVAL;
+    return -EINVAL;
   }
 	
   item=vmalloc(sizeof(int));
@@ -53,15 +54,15 @@ static ssize_t prodcons_write(struct file *filp, const char __user *buf, size_t 
   /* Bloqueo hasta que haya huecos */  
   if (down_interruptible(&huecos))
   {
-	vfree(item);
-	return -EINTR;
+  	vfree(item);
+  	return -EINTR;
   }
 
   /* Entrar a la SC */                              
   if (down_interruptible(&mtx))
   {
-        up(&huecos);      
-        return -EINTR;
+    up(&huecos);      
+    return -EINTR;
   }
 
   /* Inserción segura en el buffer circular */
@@ -90,14 +91,14 @@ static ssize_t prodcons_read(struct file *filp, char __user *buf, size_t len, lo
   /* Bloqueo hasta que haya elementos que consumir */  
   if (down_interruptible(&elementos))
   {
-	return -EINTR;
+    return -EINTR;
   }
 
   /* Entrar a la SC  */  
   if (down_interruptible(&mtx))
   {
- 	up(&elementos);	
-	return -EINTR;
+   	up(&elementos);	
+  	return -EINTR;
   }
 
   /* Obtener el primer elemento del buffer y eliminarlo */

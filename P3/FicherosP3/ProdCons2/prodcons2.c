@@ -59,24 +59,24 @@ static ssize_t prodcons_write(struct file *filp, const char __user *buf, size_t 
   /* Bloquearse mientras no haya huecos en el buffer */
   while (is_full_cbuffer_t(cbuf))
   {
-	/* Incremento de productores esperando */
-	nr_prod_waiting++;
+  	/* Incremento de productores esperando */
+  	nr_prod_waiting++;
 
-	/* Liberar el 'mutex' antes de bloqueo*/
-	up(&mtx);
+  	/* Liberar el 'mutex' antes de bloqueo*/
+  	up(&mtx);
 
-	/* Bloqueo en cola de espera */		
-	if (down_interruptible(&prod_queue)){
-		down(&mtx);
-		nr_prod_waiting--;
-		up(&mtx);		
-		return -EINTR;
-	}	
+  	/* Bloqueo en cola de espera */		
+  	if (down_interruptible(&prod_queue)){
+  		down(&mtx);
+  		nr_prod_waiting--;
+  		up(&mtx);		
+  		return -EINTR;
+  	}	
 
-	/* Readquisición del 'mutex' antes de entrar a la SC */				
-	if (down_interruptible(&mtx)){
-		return -EINTR;
-	}	
+  	/* Readquisición del 'mutex' antes de entrar a la SC */				
+  	if (down_interruptible(&mtx)){
+  		return -EINTR;
+  	}	
   }
 
   /* Insertar en el buffer */
