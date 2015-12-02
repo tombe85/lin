@@ -9,4 +9,4 @@ echo "Ejecutando 4 veces test.sh"
 read -p "Pulsa Enter" VACIO
 
 echo "Mostrando la lista"
-cat /proc/smp-safe
+cat /proc/modlist
