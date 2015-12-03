@@ -17,6 +17,7 @@ MODULE_AUTHOR("Miguel Higuera Romero & Alejandro Nicolás Ibarra Loik");
 /* Constantes */
 #define BUF_LEN 100
 #define CBUF_SIZE 50
+#define SUCCESS 0
 
 /* Variables globales */
 cbuffer_t *cbuffer;
@@ -34,12 +35,14 @@ static struct proc_dir_entry *proc_entry;
 static ssize_t fifoproc_write(struct file *filp, const char __user *buf, size_t len, loff_t *off) {
     int available_space = BUF_LEN-1;
     char kbuff[BUF_LEN];	     //Copia de buffer de usuario
+    int * item;
+    int val;
 
-    /* The application can write in this entry just once !! */
+    /* The application can write in this entry just once !!
     if ((*off) > 0)
-        return 0;
+        return 0;*/
 
-    if (len > available_space) {
+    if (len > available_space || len > CBUF_SIZE) {
         printk(KERN_INFO "fifoproc: not enough space!!\n");
         return -ENOSPC;
     }
@@ -52,6 +55,46 @@ static ssize_t fifoproc_write(struct file *filp, const char __user *buf, size_t 
     *off+=len;            /* Update the file pointer */
 
     /* AQUÍ CÓDIGO */
+    if(sscanf(kbuff, "%i", &val) != 0){
+        item = vmalloc(sizeof(int));
+        *item = val;
+
+        if (down_interruptible(&mtx)){
+      	     return -EINTR;
+        }
+
+        while(CBUF_SIZE - size_cbuffer_t(cbuffer) < len && conscount == 0){
+            nr_prod_waiting++;
+            up(&mtx);
+            if(down_interruptible(&sem_prod)){
+                down(&mtx);
+                nr_prod_waiting--;
+                up(&mtx);
+                return -EINTR;
+            }
+
+            if(down_interruptible(&mtx)){
+                return -EINTR;
+            }
+        }
+
+        if(conscount == 0){
+            up(&mtx);
+            return -EPIPE;
+        }
+
+        insert_cbuffer_t(cbuffer, item);
+
+        if(nr_cons_waiting > 0){
+            up(&sem_cons);
+            nr_cons_waiting--;
+        }
+
+        up(&mtx);
+
+    }else{
+        return -EINVAL;
+    }
 
     return len;
 }
@@ -61,22 +104,50 @@ static ssize_t fifoproc_read(struct file *filp, char __user *buf, size_t len, lo
 
     int nr_bytes;					    // Bytes leídos
     char kbuff[BUF_LEN];			    //buffer final
-    kbuff[0] = '\0';
+    int *item = NULL;
 
-    if ((*off) > 0)
-        return 0;
+    /*if ((*off) > 0)
+        return 0;*/
 
     /* AQUÍ EL CÓDIGO */
+    if(down_interruptible(&mtx)){
+        return -EINTR;
+    }
 
+    while(size_cbuffer_t(cbuffer) == 0 && prodcount == 0){
+        nr_cons_waiting++;
+        up(&mtx);
+
+        if(down_interruptible(&sem_cons)){
+            down(&mtx);
+            nr_cons_waiting--;
+            up(&mtx);
+            return -EINTR;
+        }
+
+        if(down_interruptible(&mtx)){
+            return -EINTR;
+        }
+    }
+
+    item = head_cbuffer_t(cbuffer);
+    remove_cbuffer_t(cbuffer);
+
+    if(nr_prod_waiting > 0){
+        up(&sem_prod);
+        nr_prod_waiting--;
+    }
+
+    up(&mtx);
 
     /* Cargamos los bytes leídos */
-    nr_bytes=strlen(kbuff);
+    nr_bytes=sprintf(kbuff,"%i\n",*item);
 
     /* Enviamos datos al espacio de ususario */
     if (copy_to_user(buf, kbuff, nr_bytes))
         return -EINVAL;
 
-    (*off)+=len;  /* Update the file pointer */
+    (*off)+=nr_bytes;  /* Update the file pointer */
 
     /* Informamos */
     printk(KERN_INFO "fifoproc: Elements listed\n");
@@ -84,26 +155,22 @@ static ssize_t fifoproc_read(struct file *filp, char __user *buf, size_t len, lo
     return nr_bytes;
 }
 
-static int fifoproc_open(struct inode nodo*, struct file fich*){
-    // ...
+static int fifoproc_open(struct inode *nodo, struct file *fich){
     if (fich->f_mode & FMODE_READ){
-        /* Un consumidor abrió el FIFO */
-
+        conscount++;
     }else{
-        /* Un productor abrió el FIFO */
-
+        prodcount++;
     }
+    return SUCCESS;
 }
 
-static int fifoproc_release(struct inode nodo*, struct file fich*){
-    // ...
+static int fifoproc_release(struct inode *nodo, struct file *fich){
     if (fich->f_mode & FMODE_READ){
-        /* Un consumidor cerró el FIFO */
-
+        conscount--;
     }else{
-        /* Un productor cerró el FIFO */
-
+        prodcount--;
     }
+    return SUCCESS;
 }
 
 static const struct file_operations proc_entry_fops = {
@@ -129,10 +196,11 @@ int init_fifoproc_module( void )
     prodcount = 0;
     conscount = 0;
     sema_init(&mtx, 1);
-    sema_init(&sem_cons, 0);    //??
-    sema_init(&sem_prod, 1);    //??
+    sema_init(&sem_cons, 0);
+    sema_init(&sem_prod, 0);
     nr_prod_waiting = 0;
     nr_cons_waiting = 0;
+    cbuffer = create_cbuffer_t(CBUF_SIZE);
 
     return 0;
 }
@@ -142,6 +210,8 @@ void exit_fifoproc_module( void )
 {
     /* Eliminamos la entrada de proc */
     remove_proc_entry("fifoproc", NULL);
+
+    destroy_cbuffer_t(cbuffer);
 
     /* Informamos */
     printk(KERN_INFO "fifoproc: Module unloaded.\n");
