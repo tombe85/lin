@@ -35,8 +35,8 @@ static struct proc_dir_entry *proc_entry;
 static ssize_t fifoproc_write(struct file *filp, const char __user *buf, size_t len, loff_t *off) {
     int available_space = BUF_LEN-1;
     char kbuff[BUF_LEN];	     //Copia de buffer de usuario
-    int * item;
-    int val;
+    char strtmp[BUF_LEN];
+    long int * item;
 
     /* The application can write in this entry just once !!
     if ((*off) > 0)
@@ -55,46 +55,47 @@ static ssize_t fifoproc_write(struct file *filp, const char __user *buf, size_t 
     *off+=len;            /* Update the file pointer */
 
     /* AQUÍ CÓDIGO */
-    if(sscanf(kbuff, "%i", &val) != 0){
-        item = vmalloc(sizeof(int));
-        *item = val;
-
-        if (down_interruptible(&mtx)){
-      	     return -EINTR;
-        }
-
-        while(CBUF_SIZE - size_cbuffer_t(cbuffer) < len && conscount == 0){
-            nr_prod_waiting++;
-            up(&mtx);
-            if(down_interruptible(&sem_prod)){
-                down(&mtx);
-                nr_prod_waiting--;
-                up(&mtx);
-                return -EINTR;
-            }
-
-            if(down_interruptible(&mtx)){
-                return -EINTR;
-            }
-        }
-
-        if(conscount == 0){
-            up(&mtx);
-            return -EPIPE;
-        }
-
-        insert_cbuffer_t(cbuffer, item);
-
-        if(nr_cons_waiting > 0){
-            up(&sem_cons);
-            nr_cons_waiting--;
-        }
-
-        up(&mtx);
-
-    }else{
-        return -EINVAL;
+    for(i=0; i < len; i++){
+        item = vmalloc(sizeof(char));
+        *item = kbuff[i];
     }
+    item = vmalloc(len * sizeof(char));
+    strcpy(item, kbuff);
+
+    if (down_interruptible(&mtx)){
+         return -EINTR;
+    }
+
+    while(CBUF_SIZE - size_cbuffer_t(cbuffer) >= len && conscount > 0){
+        nr_prod_waiting++;
+        up(&mtx);
+        if(down_interruptible(&sem_prod)){
+            down(&mtx);
+            nr_prod_waiting--;
+            up(&mtx);
+            return -EINTR;
+        }
+
+        if(down_interruptible(&mtx)){
+            return -EINTR;
+        }
+    }
+
+    if(conscount == 0){
+        up(&mtx);
+        return -EPIPE;
+    }
+    
+    for(i=0; i < len; i++){
+        insert_cbuffer_t(cbuffer, &item[i]);
+    }
+
+    if(nr_cons_waiting > 0){
+        up(&sem_cons);
+        nr_cons_waiting--;
+    }
+
+    up(&mtx);
 
     return len;
 }
@@ -104,7 +105,7 @@ static ssize_t fifoproc_read(struct file *filp, char __user *buf, size_t len, lo
 
     int nr_bytes;					    // Bytes leídos
     char kbuff[BUF_LEN];			    //buffer final
-    int *item = NULL;
+    char *item = NULL;
 
     /*if ((*off) > 0)
         return 0;*/
@@ -113,11 +114,18 @@ static ssize_t fifoproc_read(struct file *filp, char __user *buf, size_t len, lo
     if(down_interruptible(&mtx)){
         return -EINTR;
     }
-
-    while(size_cbuffer_t(cbuffer) == 0 && prodcount == 0){
+    
+    if(len > size_cbuffer_t(cbuffer)){
+        nr_bytes = size_cbuffer_t(cbuffer);
+    }else{
+        nr_bytes = len;
+    }
+    
+    while(size_cbuffer_t(cbuffer) == 0 && prodcount > 0){
         nr_cons_waiting++;
+        
         up(&mtx);
-
+        
         if(down_interruptible(&sem_cons)){
             down(&mtx);
             nr_cons_waiting--;
@@ -129,9 +137,19 @@ static ssize_t fifoproc_read(struct file *filp, char __user *buf, size_t len, lo
             return -EINTR;
         }
     }
-
-    item = head_cbuffer_t(cbuffer);
-    remove_cbuffer_t(cbuffer);
+    
+    if(prodcount == 0){
+        up(&mtx);
+        return -EFIFO;
+    }
+    
+    for(i=0; i < nr_bytes; i++){
+        item = head_cbuffer_t(cbuffer);
+        remove_cbuffer_t(cbuffer);
+        kbuff[i] = *item;
+        vfree(item);
+    }
+    kbuff[i] = '\0';
 
     if(nr_prod_waiting > 0){
         up(&sem_prod);
@@ -139,9 +157,6 @@ static ssize_t fifoproc_read(struct file *filp, char __user *buf, size_t len, lo
     }
 
     up(&mtx);
-
-    /* Cargamos los bytes leídos */
-    nr_bytes=sprintf(kbuff,"%i\n",*item);
 
     /* Enviamos datos al espacio de ususario */
     if (copy_to_user(buf, kbuff, nr_bytes))
@@ -151,6 +166,7 @@ static ssize_t fifoproc_read(struct file *filp, char __user *buf, size_t len, lo
 
     /* Informamos */
     printk(KERN_INFO "fifoproc: Elements listed\n");
+    
 
     return nr_bytes;
 }
