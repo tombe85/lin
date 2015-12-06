@@ -113,7 +113,7 @@ static ssize_t fifoproc_read(struct file *filp, char __user *buf, size_t len, lo
         return -EINTR;
     }
 
-    while(size_cbuffer_t(cbuffer) == 0 && prodcount > 0){
+    while(size_cbuffer_t(cbuffer) < len && prodcount > 0){
         nr_cons_waiting++;
 
         up(&mtx);
@@ -182,12 +182,28 @@ static int fifoproc_open(struct inode *nodo, struct file *fich){
                 return -EPIPE;
             }
         }
+        if(prodcount > 0 && conscount == 1){    // estaban esperando un productor
+            for(i=0; i < prodcount; i++)
+                up(&sem_prod);
+        }
         up(&mtx);
     }else{
         if(down_interruptible(&mtx)){
 	       return -EINTR;
         }
         prodcount++;
+        if(conscount == 0){
+            up(&mtx);
+            if(down_interruptible(&sem_prod)){
+                down(&mtx);
+                conscount--;
+                up(&mtx);
+                return -EPIPE;
+            }
+            if(down_interruptible(&mtx)){
+                return -EPIPE;
+            }
+        }
         if(conscount > 0 && prodcount == 1){    // estaban esperando un productor
             for(i=0; i < conscount; i++)
                 up(&sem_cons);
