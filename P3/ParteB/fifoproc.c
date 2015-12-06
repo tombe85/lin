@@ -35,8 +35,8 @@ static struct proc_dir_entry *proc_entry;
 static ssize_t fifoproc_write(struct file *filp, const char __user *buf, size_t len, loff_t *off) {
     int available_space = BUF_LEN-1;
     char kbuff[BUF_LEN];	     //Copia de buffer de usuario
-    char strtmp[BUF_LEN];
-    long int * item[len];
+    char * item[len];
+    int i;
 
     /* The application can write in this entry just once !!
     if ((*off) > 0)
@@ -85,7 +85,7 @@ static ssize_t fifoproc_write(struct file *filp, const char __user *buf, size_t 
     }
 
     for(i=0; i < len; i++){
-        insert_cbuffer_t(cbuffer, &item[i]);
+        insert_cbuffer_t(cbuffer, item[i]);
     }
 
     if(nr_cons_waiting > 0){
@@ -103,6 +103,7 @@ static ssize_t fifoproc_read(struct file *filp, char __user *buf, size_t len, lo
 
     char kbuff[BUF_LEN];			    //buffer final
     char *item = NULL;
+    int i;
 
     /*if ((*off) > 0)
         return 0;*/
@@ -131,7 +132,7 @@ static ssize_t fifoproc_read(struct file *filp, char __user *buf, size_t len, lo
 
     if(prodcount == 0){
         up(&mtx);
-        return -EFIFO;
+        return -EPIPE;
     }
 
     for(i=0; i < len; i++){
@@ -150,10 +151,10 @@ static ssize_t fifoproc_read(struct file *filp, char __user *buf, size_t len, lo
     up(&mtx);
 
     /* Enviamos datos al espacio de ususario */
-    if (copy_to_user(buf, kbuff, nr_bytes))
+    if (copy_to_user(buf, kbuff, len))
         return -EINVAL;
 
-    (*off)+=nr_bytes;  /* Update the file pointer */
+    (*off)+=len;  /* Update the file pointer */
 
     /* Informamos */
     printk(KERN_INFO "fifoproc: Elements listed\n");
@@ -163,17 +164,34 @@ static ssize_t fifoproc_read(struct file *filp, char __user *buf, size_t len, lo
 }
 
 static int fifoproc_open(struct inode *nodo, struct file *fich){
+    int i = 0;
     if (fich->f_mode & FMODE_READ){
         if(down_interruptible(&mtx)){
 	       return -EINTR;
         }
         conscount++;
+        if(prodcount == 0){
+            up(&mtx);
+            if(down_interruptible(&sem_cons)){
+                down(&mtx);
+                conscount--;
+                up(&mtx);
+                return -EPIPE;
+            }
+            if(down_interruptible(&mtx)){
+                return -EPIPE;
+            }
+        }
         up(&mtx);
     }else{
         if(down_interruptible(&mtx)){
 	       return -EINTR;
         }
         prodcount++;
+        if(conscount > 0 && prodcount == 1){    // estaban esperando un productor
+            for(i=0; i < conscount; i++)
+                up(&sem_cons);
+        }
         up(&mtx);
     }
     return SUCCESS;
