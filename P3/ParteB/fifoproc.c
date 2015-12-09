@@ -104,9 +104,10 @@ static ssize_t fifoproc_read(struct file *filp, char __user *buf, size_t len, lo
     char kbuff[BUF_LEN];			    //buffer final
     char *item = NULL;
     int i;
-
-    /*if ((*off) > 0)
-        return 0;*/
+    
+    if(len > CBUF_SIZE || len > BUF_LEN){
+		return -ENOSPC;
+	}
 
     /* AQUÍ EL CÓDIGO */
     if(down_interruptible(&mtx)){
@@ -132,7 +133,7 @@ static ssize_t fifoproc_read(struct file *filp, char __user *buf, size_t len, lo
 
     if(prodcount == 0){
         up(&mtx);
-        return -EPIPE;
+        return 0;
     }
 
     for(i=0; i < len; i++){
@@ -219,14 +220,38 @@ static int fifoproc_release(struct inode *nodo, struct file *fich){
 	       return -EINTR;
         }
         conscount--;
+        if(conscount == 0 && nr_prod_waiting > 0){
+			int i, top = nr_prod_waiting;
+			for(i=0; i < top; i++){
+				up(&sem_prod);
+				nr_prod_waiting--;
+			}
+		}
         up(&mtx);
     }else{
         if(down_interruptible(&mtx)){
 	       return -EINTR;
         }
         prodcount--;
+        if(prodcount == 0 && nr_cons_waiting > 0){
+			int i, top = nr_cons_waiting;
+			for(i=0; i < top; i++){
+				up(&sem_cons);
+				nr_cons_waiting--;
+			}
+		}
         up(&mtx);
     }
+    if(down_interruptible(&mtx)){
+		return -EINTR;
+	}
+	if(prodcount == 0 && conscount == 0){
+		int size = size_cbuffer_t(cbuffer), i;
+		for(i=0; i < size; i++){
+			remove_cbuffer_t(cbuffer);
+		}
+	}
+	up(&mtx);
     return SUCCESS;
 }
 
