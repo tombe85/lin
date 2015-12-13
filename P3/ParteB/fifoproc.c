@@ -35,7 +35,7 @@ static struct proc_dir_entry *proc_entry;
 static ssize_t fifoproc_write(struct file *filp, const char __user *buf, size_t len, loff_t *off) {
     int available_space = BUF_LEN-1;
     char kbuff[BUF_LEN];	     //Copia de buffer de usuario
-    char * item[len];
+    char * item;
     int i;
 
     /* The application can write in this entry just once !!
@@ -55,10 +55,6 @@ static ssize_t fifoproc_write(struct file *filp, const char __user *buf, size_t 
     *off+=len;            /* Update the file pointer */
 
     /* AQUÍ CÓDIGO */
-    for(i=0; i < len; i++){
-        item[i] = vmalloc(sizeof(char));
-        *(item[i]) = kbuff[i];
-    }
 
     if (down_interruptible(&mtx)){
          return -EINTR;
@@ -85,7 +81,9 @@ static ssize_t fifoproc_write(struct file *filp, const char __user *buf, size_t 
     }
 
     for(i=0; i < len; i++){
-        insert_cbuffer_t(cbuffer, item[i]);
+        item = vmalloc(sizeof(char));
+        *(item) = kbuff[i];
+        insert_cbuffer_t(cbuffer, item);
     }
 
     if(nr_cons_waiting > 0){
@@ -104,7 +102,7 @@ static ssize_t fifoproc_read(struct file *filp, char __user *buf, size_t len, lo
     char kbuff[BUF_LEN];			    //buffer final
     char *item = NULL;
     int i;
-    
+
     if(len > CBUF_SIZE || len > BUF_LEN){
 		return -ENOSPC;
 	}
