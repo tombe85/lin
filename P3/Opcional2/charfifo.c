@@ -179,15 +179,15 @@ static ssize_t charfifo_read(struct file *filp, char __user *buf, size_t len, lo
 static int charfifo_open(struct inode *nodo, struct file *fich){
     int i = 0;
 
-    if (Device_Open)
-        return -EBUSY;
+    //if (Device_Open)
+      //  return -EBUSY;
 
 
     if (fich->f_mode & FMODE_READ){
         if(down_interruptible(&mtx)){
 	       return -EINTR;
         }
-        Device_Open++;
+      //  Device_Open++;
         conscount++;
         if(prodcount == 0){
             up(&mtx);
@@ -239,7 +239,7 @@ static int charfifo_release(struct inode *nodo, struct file *fich){
         if(down_interruptible(&mtx)){
 	       return -EINTR;
         }
-        Device_Open--;
+       // Device_Open--;
         conscount--;
         if(conscount == 0 && nr_prod_waiting > 0){
 			int i, top = nr_prod_waiting;
@@ -279,7 +279,7 @@ static int charfifo_release(struct inode *nodo, struct file *fich){
 
 
 
-static const struct file_operations proc_entry_fops = {
+static const struct file_operations fops = {
     .read = charfifo_read,
     .write = charfifo_write,
     .open = charfifo_open,
@@ -297,7 +297,8 @@ int init_module( void )
         return Major;
     }
 
-
+    printk(KERN_ALERT "Registering char fifo succed with %d\n", Major);
+    
     /* Inicializaciones */
     prodcount = 0;
     conscount = 0;
