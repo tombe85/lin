@@ -59,35 +59,38 @@ static struct proc_dir_entry *proc_entry_cfg, *proc_entry_tmr;
 
 /* Función que genera aleatorio al llamarla el timer */
 static void generate_aleat(unsigned long data){
-    unsigned int *num;
+    unsigned int num;
     unsigned int ocup = (emergency_threshold * CBUF_SIZE) / 100;
     int act_cpu, tam;
     unsigned long flags;
+    
+    printk(KERN_INFO "modtimer: Usuarios %d\n", numUsers);
 
-    if(numUsers > 0){
-    	num = (unsigned int *) vmalloc(sizeof(unsigned int));
-    	*num = get_random_int() % max_random;
+    if(numUsers > 0 && !is_full_cbuffer_t (cbuffer)){
+    	num = get_random_int() % max_random;
 
     	spin_lock_irqsave(&spb, flags);
-    	insert_cbuffer_t (cbuffer, (void *) num);
+    	insert_cbuffer_t (cbuffer, num);
     	tam = size_cbuffer_t(cbuffer);
     	spin_unlock_irqrestore(&spb, flags);
 
     	if(tam >= ocup){
     	    act_cpu = smp_processor_id();
 
-    	    if(work_pending((struct work_struct *) &my_work)){
+    	    /*if(work_pending((struct work_struct *) &my_work)){
     		          flush_work((struct work_struct *) &my_work);
-    	    }
-    	    if(!act_cpu){
-    		    schedule_work_on(1, (struct work_struct *) &my_work);
+    	    }*/
+    	    flush_scheduled_work();
+    	    
+    	    if(act_cpu == 1){
+    		    schedule_work_on(2, (struct work_struct *) &my_work);
     	    }else{
-    		    schedule_work_on(0, (struct work_struct *) &my_work);
+    		    schedule_work_on(1, (struct work_struct *) &my_work);
     	    }
     	}
-
+		printk(KERN_INFO "modtimer: Generated %u\n", num);
     }
-    printk(KERN_INFO "modtimer: Generated %u", *num);
+    
     mod_timer(&aleat_timer, jiffies + timer_period);
 }
 
@@ -105,12 +108,12 @@ void addListElement(unsigned int elem){
 
 static void copy_items_into_list( struct work_struct *work){
     my_work_t * mywork = (my_work_t *) work;
-    unsigned int **item;
+    unsigned int *item;
     int i=0;
     int tam = (emergency_threshold * CBUF_SIZE) / 100;
     unsigned long flags;
 
-    item = (unsigned int **)vmalloc(sizeof(unsigned int *)*tam);
+    item = (unsigned int *)vmalloc(sizeof(unsigned int)*tam);
 
     spin_lock_irqsave(&spb, flags);
     while(!is_empty_cbuffer_t(mywork->cbuffer) && i < tam){
@@ -119,12 +122,14 @@ static void copy_items_into_list( struct work_struct *work){
         i++;
     }
     spin_unlock_irqrestore(&spb, flags);
+    
     if(down_interruptible(&semlist)){
 	       return;
     }
+    
     for(i=0; i < tam; i++){
-	addListElement(*(item[i]));
-	vfree(item[i]);
+		addListElement((item[i]));
+		//vfree(item[i]);
     }
 
     while(consLocked > 0){
@@ -134,7 +139,7 @@ static void copy_items_into_list( struct work_struct *work){
 
     up(&semlist);
     vfree(item);
-    printk(KERN_INFO "modtimer: Copied %d elements to the list", tam);
+    printk(KERN_INFO "modtimer: Copied %d elements to the list\n", tam);
 }
 
 static int modtimer_open(struct inode *nodo, struct file *fich){
@@ -144,7 +149,7 @@ static int modtimer_open(struct inode *nodo, struct file *fich){
 
 static int modtimer_release(struct inode *nodo, struct file *fich){
     numUsers--;
-    printk(KERN_INFO "modtimer: Ejecutado release. Users: %d", numUsers);
+    printk(KERN_INFO "modtimer: Ejecutado release. Users: %d\n", numUsers);
     return SUCCESS;
 }
 
@@ -171,14 +176,14 @@ static ssize_t modtimer_read(struct file *filp, char __user *buf, size_t len, lo
     vfree(nodo);
     up(&semlist);
 
-    sprintf(kbuf, "%u", dato);
-    if(copy_to_user(buf, kbuf, sizeof(unsigned int))){
+    sprintf(kbuf, "%u\n\0", dato);
+    if(copy_to_user(buf, kbuf, strlen(kbuf))){
 	       return -EINVAL;
     }
 
-    *off += len;
+    *off += strlen(kbuf);
 
-    return len;
+    return strlen(kbuf);
 }
 
 static ssize_t modconfig_read(struct file *filp, char __user *buf, size_t len, loff_t *off) {
@@ -220,6 +225,8 @@ int init_modtimer_module( void )
     /* Inicializaciones */
     cbuffer = create_cbuffer_t(CBUF_SIZE);
     numUsers = 0;
+    /* Create timer */
+    init_timer(&aleat_timer);
     timer_period = DEF_TICKS;
     max_random = DEF_MAXRDM;
     emergency_threshold = DEF_THRESHOLD;
@@ -236,6 +243,8 @@ int init_modtimer_module( void )
 
     sema_init(&semlist, 1);
     sema_init(&semcons, 0);
+    
+    printk(KERN_INFO "modtimer: Se va a iniciar el timer\n");
 
     /* Acciones */
     add_timer(&aleat_timer);

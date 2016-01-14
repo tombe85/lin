@@ -19,7 +19,7 @@ cbuffer_t* create_cbuffer_t (unsigned int max_size)
     cbuffer->max_size=max_size;
 
 	/* Stores pointers to elements */
-	cbuffer->data=vmalloc(max_size*sizeof(unsigned int *));
+	cbuffer->data=(unsigned int *)vmalloc(max_size*sizeof(unsigned int));
 	if ( cbuffer->data == NULL)
 	{
 		vfree(cbuffer);
@@ -59,7 +59,7 @@ int is_empty_cbuffer_t ( cbuffer_t* cbuffer )
 
 
 /* Inserts an item at the end of the buffer */
-void insert_cbuffer_t ( cbuffer_t* cbuffer, unsigned int* new_item )
+void insert_cbuffer_t ( cbuffer_t* cbuffer, unsigned int new_item )
 {
 	unsigned int pos=0;
 
@@ -95,12 +95,12 @@ void remove_cbuffer_t ( cbuffer_t* cbuffer)
 }
 
 /* Returns the first element in the buffer */
-unsigned int* head_cbuffer_t ( cbuffer_t* cbuffer )
+unsigned int head_cbuffer_t ( cbuffer_t* cbuffer )
 {
 	if ( cbuffer->size !=0 )
 		return cbuffer->data[cbuffer->head];
 	else{
-		return NULL;
+		return -1;
 	}
 }
 

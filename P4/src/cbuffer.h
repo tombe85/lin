@@ -3,7 +3,7 @@
 
 typedef struct
 {
-	unsigned int** data;		/* Vector of pointers to items in the buffer */
+	unsigned int* data;		/* Vector of pointers to items in the buffer */
 	unsigned int head;		/* Index of the first element // head in [0 .. max_size-1] */
 	unsigned int size;		/* Current Buffer size // size in [0 .. max_size] */
 	unsigned int max_size; 	 	/* Buffer max capacity */
@@ -27,12 +27,12 @@ int is_full_cbuffer_t ( cbuffer_t* cbuffer );
 int is_empty_cbuffer_t ( cbuffer_t* cbuffer );
 
 /* Inserts an item at the end of the buffer */
-void insert_cbuffer_t ( cbuffer_t* cbuffer, unsigned int* new_item );
+void insert_cbuffer_t ( cbuffer_t* cbuffer, unsigned int new_item );
 
 /* Removes the first element in the buffer */
 void remove_cbuffer_t ( cbuffer_t* cbuffer);
 
 /* Returns the first element in the buffer */
-unsigned int* head_cbuffer_t ( cbuffer_t* cbuffer );
+unsigned int head_cbuffer_t ( cbuffer_t* cbuffer );
 
 #endif
