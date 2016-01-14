@@ -41,50 +41,153 @@ typedef struct {
 my_work_t my_work;
 struct list_head linkedlist;
 int linkedlistcount;
+int consLocked;
 
 typedef struct {
-    int data;
+    unsigned int data;
     struct list_head links;
 } list_item_t;
+
+DEFINE_SPINLOCK(spb);
+
+struct semaphore semlist;
+struct semaphore semcons;
+
 
 /* Entradas de proc */
 static struct proc_dir_entry *proc_entry_cfg, *proc_entry_tmr;
 
-
 /* Función que genera aleatorio al llamarla el timer */
-void generate_aleat(void){
+static void generate_aleat(unsigned long data){
     unsigned int *num;
     unsigned int ocup = (emergency_threshold * CBUF_SIZE) / 100;
-    int act_cpu;
-    num = (unsigned int) kmalloc(sizeof(unsigned int));
-    *num = get_random_int() % max_random;
-    insert_cbuffer_t (cbuffer, (void *) num);
-    if(size_cbuffer_t(cbuffer) >= ocup){
-	act_cpu = smp_processor_id();
-	
-	if(work_pending((struct work_struct *) my_work)){
-	    flush_work((struct work_struct *) my_work);
-	}
-	//TODO : Vaciado de buffer
-	if(!act_cpu){
-	    schedule_work_on(1, (struct work_struct *) my_work);
-	}else{
-	    schedule_work_on(0, (struct work_struct *) my_work);
-	}
-	
-	
+    int act_cpu, tam;
+    unsigned long flags;
+
+    if(numUsers > 0){
+    	num = (unsigned int *) vmalloc(sizeof(unsigned int));
+    	*num = get_random_int() % max_random;
+
+    	spin_lock_irqsave(&spb, flags);
+    	insert_cbuffer_t (cbuffer, (void *) num);
+    	tam = size_cbuffer_t(cbuffer);
+    	spin_unlock_irqrestore(&spb, flags);
+
+    	if(tam >= ocup){
+    	    act_cpu = smp_processor_id();
+
+    	    if(work_pending((struct work_struct *) &my_work)){
+    		          flush_work((struct work_struct *) &my_work);
+    	    }
+    	    if(!act_cpu){
+    		    schedule_work_on(1, (struct work_struct *) &my_work);
+    	    }else{
+    		    schedule_work_on(0, (struct work_struct *) &my_work);
+    	    }
+    	}
+
     }
+    printk(KERN_INFO "modtimer: Generated %u", *num);
     mod_timer(&aleat_timer, jiffies + timer_period);
+}
+
+// Semaforo ya está bloqueado
+void addListElement(unsigned int elem){
+    list_item_t * nodo;
+
+    nodo = (list_item_t *)vmalloc(sizeof(list_item_t));
+
+    nodo->data = elem;
+
+    list_add_tail(&nodo->links, &linkedlist);
+    linkedlistcount++;
 }
 
 static void copy_items_into_list( struct work_struct *work){
     my_work_t * mywork = (my_work_t *) work;
-    
+    unsigned int **item;
+    int i=0;
+    int tam = (emergency_threshold * CBUF_SIZE) / 100;
+    unsigned long flags;
+
+    item = (unsigned int **)vmalloc(sizeof(unsigned int *)*tam);
+
+    spin_lock_irqsave(&spb, flags);
+    while(!is_empty_cbuffer_t(mywork->cbuffer) && i < tam){
+        item[i] = head_cbuffer_t(mywork->cbuffer);
+        remove_cbuffer_t(mywork->cbuffer);
+        i++;
+    }
+    spin_unlock_irqrestore(&spb, flags);
+    if(down_interruptible(&semlist)){
+	       return;
+    }
+    for(i=0; i < tam; i++){
+	addListElement(*(item[i]));
+	vfree(item[i]);
+    }
+
+    while(consLocked > 0){
+        up(&semcons);
+        consLocked--;
+    }
+
+    up(&semlist);
+    vfree(item);
+    printk(KERN_INFO "modtimer: Copied %d elements to the list", tam);
 }
 
+static int modtimer_open(struct inode *nodo, struct file *fich){
+    numUsers++;
+    return SUCCESS;
+}
 
+static int modtimer_release(struct inode *nodo, struct file *fich){
+    numUsers--;
+    printk(KERN_INFO "modtimer: Ejecutado release. Users: %d", numUsers);
+    return SUCCESS;
+}
 
+static ssize_t modtimer_read(struct file *filp, char __user *buf, size_t len, loff_t *off) {
+    list_item_t *nodo;
+    unsigned int dato;
+    char kbuf[BUF_LEN];
 
+    if(linkedlistcount == 0){
+        consLocked++;
+    	if(down_interruptible(&semcons)){
+    	    consLocked--;
+    	    return -EINTR;
+    	}
+
+    }
+    if(down_interruptible(&semlist)){
+        return -EINTR;
+    }
+    nodo = list_entry(linkedlist.next, list_item_t, links);
+    dato = nodo->data;
+    list_del(linkedlist.next);
+    linkedlistcount--;
+    vfree(nodo);
+    up(&semlist);
+
+    sprintf(kbuf, "%u", dato);
+    if(copy_to_user(buf, kbuf, sizeof(unsigned int))){
+	       return -EINVAL;
+    }
+
+    *off += len;
+
+    return len;
+}
+
+static ssize_t modconfig_read(struct file *filp, char __user *buf, size_t len, loff_t *off) {
+    return len;
+}
+
+static ssize_t modconfig_write(struct file *filp, const char __user *buf, size_t len, loff_t *off) {
+    return len;
+}
 
 static const struct file_operations proc_entry_fops_cfg = {
     .read = modconfig_read,
@@ -106,13 +209,12 @@ int init_modtimer_module( void )
         printk(KERN_INFO "modtimer: Can't create /proc entry\n");
         return -ENOMEM;
     } else {
-	proc_entry_tmr = proc_create( "modtimer", 0666, NULL, &proc_entry_fops_tmr);
-	if(proc_entry_tmr == NULL) {
-	    printk(KERN_INFO "modtimer: Can't create /proc entry\n");
-	    remove_proc_entry("modconfig", NULL);
-	    return -ENOMEM;
-	}
-        
+    	proc_entry_tmr = proc_create( "modtimer", 0666, NULL, &proc_entry_fops_tmr);
+    	if(proc_entry_tmr == NULL) {
+    	    printk(KERN_INFO "modtimer: Can't create /proc entry\n");
+    	    remove_proc_entry("modconfig", NULL);
+    	    return -ENOMEM;
+    	}
     }
 
     /* Inicializaciones */
@@ -124,25 +226,63 @@ int init_modtimer_module( void )
     aleat_timer.expires = jiffies + timer_period;
     aleat_timer.data = 0;
     aleat_timer.function = generate_aleat;
+
     INIT_WORK((struct work_struct *) &my_work, copy_items_into_list);
-    
+    my_work.cbuffer = cbuffer;
+
+    INIT_LIST_HEAD(&linkedlist);
+    linkedlistcount = 0;
+    consLocked = 0;
+
+    sema_init(&semlist, 1);
+    sema_init(&semcons, 0);
+
     /* Acciones */
     add_timer(&aleat_timer);
-    
+
     printk(KERN_INFO "modtimer: Module loaded\n");
     return SUCCESS;
+}
+
+void cleanUpList(void){
+	list_item_t *mynodo;
+	struct list_head* cur_node=NULL;
+    struct list_head* aux=NULL;
+
+    down_interruptible(&semlist);
+
+    /* Recorremos la lista */
+    list_for_each_safe(cur_node, aux, &linkedlist) {
+        mynodo = list_entry(cur_node,list_item_t, links);
+
+        /* Eliminamos nodo de la lista */
+        list_del(cur_node);
+
+        /*Liberamos memoria dinámica del nodo */
+        vfree(mynodo);
+    }
+    linkedlistcount = 0;
+
+    up(&semlist);
 }
 
 /* Función exit module */
 void exit_modtimer_module( void )
 {
+
+    del_timer_sync(&aleat_timer);
+    flush_scheduled_work();
+
     /* Eliminamos la entrada de proc */
-    remove_proc_entry("fifoproc", NULL);
+    remove_proc_entry("modconfig", NULL);
+    remove_proc_entry("modtimer", NULL);
 
     destroy_cbuffer_t(cbuffer);
 
+    cleanup_list();
+
     /* Informamos */
-    printk(KERN_INFO "fifoproc: Module unloaded.\n");
+    printk(KERN_INFO "modtimer: Module unloaded.\n");
 }
 
 module_init( init_modtimer_module );
