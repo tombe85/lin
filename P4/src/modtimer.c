@@ -160,6 +160,7 @@ static ssize_t modtimer_read(struct file *filp, char __user *buf, size_t len, lo
 
     if(linkedlistcount == 0){
         consLocked++;
+        printk(KERN_INFO "modtimer: Esperando elementos. Bloqueados: %d\n", consLocked);
     	if(down_interruptible(&semcons)){
     	    consLocked--;
     	    return -EINTR;
@@ -173,8 +174,8 @@ static ssize_t modtimer_read(struct file *filp, char __user *buf, size_t len, lo
     dato = nodo->data;
     list_del(linkedlist.next);
     linkedlistcount--;
-    vfree(nodo);
     up(&semlist);
+    vfree(nodo);
 
     sprintf(kbuf, "%u\n\0", dato);
     if(copy_to_user(buf, kbuf, strlen(kbuf))){
