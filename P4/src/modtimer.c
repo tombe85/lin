@@ -279,7 +279,7 @@ void exit_modtimer_module( void )
 
     destroy_cbuffer_t(cbuffer);
 
-    cleanup_list();
+    cleanUpList();
 
     /* Informamos */
     printk(KERN_INFO "modtimer: Module unloaded.\n");
