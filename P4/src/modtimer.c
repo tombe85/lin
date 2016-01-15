@@ -182,11 +182,77 @@ static ssize_t modtimer_read(struct file *filp, char __user *buf, size_t len, lo
 }
 
 static ssize_t modconfig_read(struct file *filp, char __user *buf, size_t len, loff_t *off) {
-    return 0;
+    int nr_bytes;						// Bytes leídos
+  char kbuf[BUF_LEN];				//Mensaje final
+
+  if ((*off) > 0) /* Tell the application that there is nothing left to read */
+      return 0;
+
+  kbuf[0] = '\0';
+  sprintf(&kbuf[0], "timer_period_ms=%d\nemergency_threshold=%d\nmax_random=%d\n", timer_period, emergency_threshold, max_random);
+	strcat(kbuf, "\0");
+	
+  /* Cargamos los bytes leídos */
+  nr_bytes=strlen(kbuf);
+
+  if (len<nr_bytes)
+    return -ENOSPC;
+
+  /* Enviamos datos al espacio de ususario */
+  if (copy_to_user(buf, kbuf, nr_bytes))
+    return -EINVAL;
+
+  (*off)+=len;  /* Update the file pointer */
+
+  /* Informamos */
+  printk(KERN_INFO "Modlist: Elements listed\n");
+
+  return nr_bytes;
 }
 
 static ssize_t modconfig_write(struct file *filp, const char __user *buf, size_t len, loff_t *off) {
+    int available_space = BUF_LEN-1;
+  int num;					//Numero leído en add/remove
+  char kbuf[BUF_LEN];	//Copia de buffer de usuario
+
+  /* The application can write in this entry just once !! */
+  if ((*off) > 0)
     return 0;
+
+  if (len > available_space) {
+    printk(KERN_INFO "modtimer: not enough space!!\n");
+    return -ENOSPC;
+  }
+
+  /* Transfer data from user to kernel space */
+  if (copy_from_user( &kbuf[0], buf, len ))
+    return -EFAULT;
+
+  kbuf[len] = '\0'; 	/* Add the '\0' */
+  *off+=len;            /* Update the file pointer */
+
+  /* Leemos ordenes */
+  if(sscanf(&kbuf[0],"timer_period_ms %i",&num)) {
+	
+	timer_period = num;
+    /* Informamos */
+    printk(KERN_INFO "modtimer: changed timer_period_ms to %i\n", num);
+
+  }
+  else if(sscanf(&kbuf[0],"emergency_threshold %i",&num)) {
+	emergency_threshold = num;
+    /* Informamos */
+    printk(KERN_INFO "modtimer: changed emergency_threshold to %i\n", num);
+  }else if(sscanf(&kbuf[0],"max_random %i",&num)) {
+	  max_random = num;
+    /* Informamos */
+    printk(KERN_INFO "modtimer: changed max_random to %i\n", num);
+  }
+  else {
+    // retornar un codigo de error correspondiente (instruccion incorrecta)
+    return -EINVAL;
+  }
+  return len;
 }
 
 static const struct file_operations proc_entry_fops_cfg = {
