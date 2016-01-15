@@ -77,9 +77,6 @@ static void generate_aleat(unsigned long data){
     	if(tam >= ocup){
     	    act_cpu = smp_processor_id();
 
-    	    /*if(work_pending((struct work_struct *) &my_work)){
-    		          flush_work((struct work_struct *) &my_work);
-    	    }*/
     	    flush_scheduled_work();
     	    
     	    if(act_cpu == 1){
@@ -108,20 +105,18 @@ void addListElement(unsigned int elem){
 
 static void copy_items_into_list( struct work_struct *work){
     my_work_t * mywork = (my_work_t *) work;
-    unsigned int *item;
-    int i=0;
-    int tam = (emergency_threshold * CBUF_SIZE) / 100;
+    unsigned int item[CBUF_SIZE];
+    int i=0, tam;
     unsigned long flags;
 
-    item = (unsigned int *)vmalloc(sizeof(unsigned int)*tam);
-
     spin_lock_irqsave(&spb, flags);
-    while(!is_empty_cbuffer_t(mywork->cbuffer) && i < tam){
+    while(!is_empty_cbuffer_t(mywork->cbuffer)){
         item[i] = head_cbuffer_t(mywork->cbuffer);
         remove_cbuffer_t(mywork->cbuffer);
         i++;
     }
     spin_unlock_irqrestore(&spb, flags);
+    tam = i;
     
     if(down_interruptible(&semlist)){
 	       return;
@@ -129,7 +124,6 @@ static void copy_items_into_list( struct work_struct *work){
     
     for(i=0; i < tam; i++){
 		addListElement((item[i]));
-		//vfree(item[i]);
     }
 
     while(consLocked > 0){
@@ -138,7 +132,6 @@ static void copy_items_into_list( struct work_struct *work){
     }
 
     up(&semlist);
-    vfree(item);
     printk(KERN_INFO "modtimer: Copied %d elements to the list\n", tam);
 }
 
@@ -177,7 +170,8 @@ static ssize_t modtimer_read(struct file *filp, char __user *buf, size_t len, lo
     up(&semlist);
     vfree(nodo);
 
-    sprintf(kbuf, "%u\n\0", dato);
+    sprintf(kbuf, "%u\n", dato);
+    strcat(kbuf, "\0");
     if(copy_to_user(buf, kbuf, strlen(kbuf))){
 	       return -EINVAL;
     }
@@ -188,11 +182,11 @@ static ssize_t modtimer_read(struct file *filp, char __user *buf, size_t len, lo
 }
 
 static ssize_t modconfig_read(struct file *filp, char __user *buf, size_t len, loff_t *off) {
-    return len;
+    return 0;
 }
 
 static ssize_t modconfig_write(struct file *filp, const char __user *buf, size_t len, loff_t *off) {
-    return len;
+    return 0;
 }
 
 static const struct file_operations proc_entry_fops_cfg = {

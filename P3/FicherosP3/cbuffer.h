@@ -4,7 +4,7 @@
 
 typedef struct
 {
-    char* data;			/* raw byte vector */
+    	char* data;			/* raw byte vector */
 	unsigned int head;		/* Index of the first element // head in [0 .. max_size-1] */
 	unsigned int size;		/* Current Buffer size // size in [0 .. max_size] */
 	unsigned int max_size;  	/* Buffer max capacity */
