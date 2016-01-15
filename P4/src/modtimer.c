@@ -103,6 +103,28 @@ void addListElement(unsigned int elem){
     linkedlistcount++;
 }
 
+void cleanUpList(void){
+	list_item_t *mynodo;
+	struct list_head* cur_node=NULL;
+    struct list_head* aux=NULL;
+
+    down_interruptible(&semlist);
+
+    /* Recorremos la lista */
+    list_for_each_safe(cur_node, aux, &linkedlist) {
+        mynodo = list_entry(cur_node,list_item_t, links);
+
+        /* Eliminamos nodo de la lista */
+        list_del(cur_node);
+
+        /*Liberamos memoria dinámica del nodo */
+        vfree(mynodo);
+    }
+    linkedlistcount = 0;
+
+    up(&semlist);
+}
+
 static void copy_items_into_list( struct work_struct *work){
     my_work_t * mywork = (my_work_t *) work;
     unsigned int item[CBUF_SIZE];
@@ -136,13 +158,23 @@ static void copy_items_into_list( struct work_struct *work){
 }
 
 static int modtimer_open(struct inode *nodo, struct file *fich){
-    numUsers++;
+    numUsers++;	//utilizar un contador atómico 
+    aleat_timer.expires = jiffies + timer_period;
+    add_timer(&aleat_timer);
+    try_module_get(THIS_MODULE);
     return SUCCESS;
 }
 
 static int modtimer_release(struct inode *nodo, struct file *fich){
-    numUsers--;
-    printk(KERN_INFO "modtimer: Ejecutado release. Users: %d\n", numUsers);
+    numUsers--;//decrementar atomico
+    del_timer_sync(&aleat_timer);
+    flush_scheduled_work();
+    //destroy_cbuffer_t(cbuffer);
+    while(!is_empty_cbuffer_t(cbuffer)){
+        remove_cbuffer_t(cbuffer);
+    }
+    cleanUpList();
+    module_put(THIS_MODULE);
     return SUCCESS;
 }
 
@@ -307,49 +339,22 @@ int init_modtimer_module( void )
     
     printk(KERN_INFO "modtimer: Se va a iniciar el timer\n");
 
-    /* Acciones */
-    add_timer(&aleat_timer);
+    
 
     printk(KERN_INFO "modtimer: Module loaded\n");
     return SUCCESS;
-}
-
-void cleanUpList(void){
-	list_item_t *mynodo;
-	struct list_head* cur_node=NULL;
-    struct list_head* aux=NULL;
-
-    down_interruptible(&semlist);
-
-    /* Recorremos la lista */
-    list_for_each_safe(cur_node, aux, &linkedlist) {
-        mynodo = list_entry(cur_node,list_item_t, links);
-
-        /* Eliminamos nodo de la lista */
-        list_del(cur_node);
-
-        /*Liberamos memoria dinámica del nodo */
-        vfree(mynodo);
-    }
-    linkedlistcount = 0;
-
-    up(&semlist);
 }
 
 /* Función exit module */
 void exit_modtimer_module( void )
 {
 
-    del_timer_sync(&aleat_timer);
-    flush_scheduled_work();
+    destroy_cbuffer_t(cbuffer);
 
     /* Eliminamos la entrada de proc */
     remove_proc_entry("modconfig", NULL);
     remove_proc_entry("modtimer", NULL);
-
-    destroy_cbuffer_t(cbuffer);
-
-    cleanUpList();
+	
 
     /* Informamos */
     printk(KERN_INFO "modtimer: Module unloaded.\n");
