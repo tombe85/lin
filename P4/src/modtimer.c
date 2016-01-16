@@ -11,6 +11,7 @@
 #include <linux/random.h>
 #include <linux/workqueue.h>
 #include <asm/atomic.h>
+#include <asm/smp.h>
 #include "cbuffer.h"
 
 /* Datos del módulo */
@@ -42,7 +43,7 @@ cbuffer_t *cbuffer;
 //Trabajo diferido
 typedef struct {
   struct work_struct work;
-  cbuffer_t *cbuffer;
+  cbuffer_t *cbuffer;   // apunta al buffer circular
 } my_work_t;
 my_work_t my_work;
 // Lista enlazada
@@ -84,15 +85,13 @@ static void generate_aleat(unsigned long data){
         // Si se ha alcanzado el tamaño límite lanzamos trabajo diferido
     	if(tam >= threshold){
             //Esperamos a los trabajos previos
-    	    flush_scheduled_work();
+            if(work_pending((struct work_struct *) &my_work)){
+                flush_scheduled_work();
+            }
             // Leemos la cpu de este proceso
             act_cpu = smp_processor_id();
             // lanzamos trabajo diferido en la otra cpu
-    	    if(act_cpu == 1){
-    		    schedule_work_on(2, (struct work_struct *) &my_work);
-    	    }else{
-    		    schedule_work_on(1, (struct work_struct *) &my_work);
-    	    }
+            schedule_work_on(act_cpu == 1 ? 0 : 1, (struct work_struct *) &my_work);
     	}
     }
     // reconfiguramos el timer
@@ -155,7 +154,7 @@ static void copy_items_into_list( struct work_struct *work){
         nodo = (list_item_t *)vmalloc(sizeof(list_item_t));
 		addListElement(item[i], nodo);
     }
-    
+
     // Si el consumidor está bloqueado lo desbloqueamos
     if(consLocked > 0){
         up(&semcons);
@@ -192,7 +191,8 @@ static int modtimer_release(struct inode *nodo, struct file *fich){
     //desactivamos temporizador
     del_timer_sync(&aleat_timer);
     // esperamos a que acaben los trabajos diferidos
-    flush_scheduled_work();
+    if(work_pending((struct work_struct *) &my_work))
+        flush_scheduled_work();
     //vaciamos el buffer circular
     while(!is_empty_cbuffer_t(cbuffer)){
         remove_cbuffer_t(cbuffer);
@@ -233,7 +233,7 @@ static ssize_t modtimer_read(struct file *filp, char __user *buf, size_t len, lo
         vfree(nodo);
     }
     up(&semlist);
-    
+
     //Copiamos el elemento al espacio de usuario
     sprintf(&kbuf[0], "%u\n", dato);
     strcat(kbuf, "\0");
