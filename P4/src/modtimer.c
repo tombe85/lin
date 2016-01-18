@@ -25,7 +25,7 @@ MODULE_AUTHOR("Miguel Higuera Romero & Alejandro Nicolás Ibarra Loik");
 #ifndef SUCCESS
 #define SUCCESS 0
 #endif
-#define DEF_TICKS 250
+#define DEF_TICKS 500
 #define DEF_THRESHOLD 80
 #define DEF_MAXRDM 300
 
@@ -70,6 +70,7 @@ static void generate_aleat(unsigned long data){
     unsigned int threshold = (emergency_threshold * CBUF_SIZE) / 100;
     int act_cpu, tam;
     unsigned long flags;
+    int ticks = (int)(((double) timer_period / (double)1000) * (double) HZ);
 
     if(!is_full_cbuffer_t (cbuffer)){
         //Generamos número aleatorio
@@ -95,7 +96,7 @@ static void generate_aleat(unsigned long data){
     	}
     }
     // reconfiguramos el timer
-    mod_timer(&aleat_timer, jiffies + timer_period);
+    mod_timer(&aleat_timer, jiffies + ticks);
 }
 
 // Función que añade un elemento a la lista enlazada.
@@ -166,6 +167,7 @@ static void copy_items_into_list( struct work_struct *work){
 /** proc operations **/
 
 static int modtimer_open(struct inode *nodo, struct file *fich){
+    int ticks = (int)(((double) timer_period / (double)1000) * (double) HZ);
     //Incrementamos el numero de consumidores
     atomic_inc(&numUsers);
     //Comprobamos que sólo pueda haber 1
@@ -175,7 +177,7 @@ static int modtimer_open(struct inode *nodo, struct file *fich){
         return -ENOSPC; //TODO Ver error a lanzar
     }
     //Reconfiguramos el parámetro expires del timer y lo lanzamos
-    aleat_timer.expires = jiffies + timer_period;
+    aleat_timer.expires = jiffies + ticks;
     add_timer(&aleat_timer);
     //controlamos que el módulo no pueda descargarse mientras haya consumidor
     try_module_get(THIS_MODULE);
@@ -238,7 +240,7 @@ static ssize_t modtimer_read(struct file *filp, char __user *buf, size_t len, lo
     sprintf(&kbuf[0], "%u\n", dato);
     strcat(kbuf, "\0");
     if(copy_to_user(buf, kbuf, strlen(kbuf))){
-	       return -EINVAL;
+        return -EINVAL;
     }
     *off += strlen(kbuf);
     return strlen(kbuf);
@@ -257,7 +259,7 @@ static ssize_t modconfig_read(struct file *filp, char __user *buf, size_t len, l
     sprintf(&kbuf[0], "timer_period_ms=%d\nemergency_threshold=%d\nmax_random=%d\n", timer_period, emergency_threshold, max_random);
     strcat(kbuf, "\0");
     nr_bytes=strlen(kbuf);
-    if (len<nr_bytes)
+    if (len < nr_bytes)
         return -ENOSPC;
     // Mandamos la información al espacio de usuario
     if (copy_to_user(buf, kbuf, nr_bytes))
@@ -287,7 +289,7 @@ static ssize_t modconfig_write(struct file *filp, const char __user *buf, size_t
 
     /* Leemos ordenes y modificamos la variable especificada */
     if(sscanf(&kbuf[0],"timer_period_ms %i",&num)) {
-        timer_period = (num/1000)*HZ; // pasamos de ms a tics
+        timer_period = num;
         printk(KERN_INFO "modtimer: changed timer_period_ms to %i\n", num);
     }else if(sscanf(&kbuf[0],"emergency_threshold %i",&num)) {
         emergency_threshold = num;
@@ -336,7 +338,7 @@ int init_modtimer_module( void )
     timer_period = DEF_TICKS;
     max_random = DEF_MAXRDM;
     emergency_threshold = DEF_THRESHOLD;
-    aleat_timer.expires = jiffies + timer_period;
+    aleat_timer.expires = jiffies + ((int)(((double) timer_period / (double)1000) * (double) HZ));
     aleat_timer.data = 0;
     aleat_timer.function = generate_aleat;
 
