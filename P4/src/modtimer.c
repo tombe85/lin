@@ -287,7 +287,7 @@ static ssize_t modconfig_write(struct file *filp, const char __user *buf, size_t
 
     /* Leemos ordenes y modificamos la variable especificada */
     if(sscanf(&kbuf[0],"timer_period_ms %i",&num)) {
-        timer_period = num;
+        timer_period = (num/1000)*HZ; // pasamos de ms a tics
         printk(KERN_INFO "modtimer: changed timer_period_ms to %i\n", num);
     }else if(sscanf(&kbuf[0],"emergency_threshold %i",&num)) {
         emergency_threshold = num;
