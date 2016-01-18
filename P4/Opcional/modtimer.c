@@ -46,7 +46,7 @@ typedef struct {
   struct work_struct work;
   cbuffer_t *cbuffer;   // apunta al buffer circular
 } my_work_t;
-static struct workqueue_struct * my_wq;
+static struct workqueue_struct * my_wq;	//wordqueue privada
 my_work_t my_work;
 // Lista enlazada
 struct list_head linkedlistpar;
@@ -79,6 +79,7 @@ static void generate_aleat(unsigned long data){
     unsigned int threshold = (emergency_threshold * CBUF_SIZE) / 100;
     int act_cpu, tam, ret;
     unsigned long flags;
+    int ticks = (int) (((float) timer_period / (float) 1000) * (float) HZ);
 
     if(!is_full_cbuffer_t (cbuffer)){
         //Generamos número aleatorio
@@ -94,19 +95,15 @@ static void generate_aleat(unsigned long data){
         // Si se ha alcanzado el tamaño límite lanzamos trabajo diferido
     	if(tam >= threshold){
             //Esperamos a los trabajos previos
-            /*if(work_pending((struct work_struct *) &my_work)){
-                flush_scheduled_work();
-            }*/
             flush_workqueue(my_wq);
             // Leemos la cpu de este proceso
             act_cpu = smp_processor_id();
-            // lanzamos trabajo diferido en la otra cpu
-            //schedule_work_on(act_cpu == 1 ? 0 : 1, (struct work_struct *) &my_work);
+            // lanzamos trabajo diferido en la wordqueue privada
             ret = queue_work(my_wq, (struct work_struct *)&my_work);
     	}
     }
     // reconfiguramos el timer
-    mod_timer(&aleat_timer, jiffies + timer_period);
+    mod_timer(&aleat_timer, jiffies + ticks);
 }
 
 // Función que añade un elemento a la lista enlazada.
@@ -134,7 +131,7 @@ void addListElement(unsigned int elem, list_item_t * nodo){
 	}
 }
 
-// Función que vacía la lista enlazada
+// Función que vacía la lista enlazada pasada
 void cleanUpList(struct list_head * list, struct semaphore * sem, int * count){
 	list_item_t *mynodo;
 	struct list_head* cur_node=NULL;
@@ -179,34 +176,35 @@ static void copy_items_into_list( struct work_struct *work){
         list_item_t * nodo;
         nodo = (list_item_t *)vmalloc(sizeof(list_item_t));
         if((item[i]%2)==0)
-			haypar++;
-		else
-			hayimpar++;
-		addListElement(item[i], nodo);
+		haypar++;
+	else
+		hayimpar++;
+	addListElement(item[i], nodo);
     }
 
     // Si el consumidor está bloqueado lo desbloqueamos
     if(haypar) {
-		if(consLockedpar > 0){
-			up(&sembarrerapar);
-			consLockedpar--;
-		}
-		printk(KERN_INFO "modtimer: Copied %d elements to the par list\n", haypar);
-	}
-	
-	if(hayimpar) {
-		if(consLockedimpar > 0){
-			up(&sembarreraimpar);
-			consLockedimpar--;
-		}
-		printk(KERN_INFO "modtimer: Copied %d elements to the impar list\n", hayimpar);
-	}
+	    if(consLockedpar > 0){
+		    up(&sembarrerapar);
+		    consLockedpar--;
+	    }
+	    printk(KERN_INFO "modtimer: Copied %d elements to the par list\n", haypar);
+    }
+    
+    if(hayimpar) {
+	    if(consLockedimpar > 0){
+		    up(&sembarreraimpar);
+		    consLockedimpar--;
+	    }
+	    printk(KERN_INFO "modtimer: Copied %d elements to the impar list\n", hayimpar);
+    }
     
 }
 
 /** proc operations **/
 
 static int modtimer_open(struct inode *nodo, struct file *fich){
+    int ticks = (int) (((float) timer_period / (float) 1000) * (float) HZ);
     //Incrementamos el numero de consumidores
     if(down_interruptible(&semreaders)){
 		return -EINTR;
@@ -217,24 +215,24 @@ static int modtimer_open(struct inode *nodo, struct file *fich){
         printk(KERN_INFO "modtimer: Error: Ya hay dos consumidor.");
         atomic_dec(&numUsers);
         up(&semreaders);
-        return -ENOSPC; //TODO Ver error a lanzar
+        return -ENOSPC;
     }
     
     /* Se les asigna el private_data correspondiente */
     if(atomic_read(&numUsers) == 1) {
-		pares = 1;
-		fich->private_data = (void *) &pares;
-		//controlamos que el módulo no pueda descargarse mientras haya consumidor
-		try_module_get(THIS_MODULE);
-	}
-	else {
-		impares = 2;
-		fich->private_data = (void *) &impares;
-		//Reconfiguramos el parámetro expires del timer y lo lanzamos
-		aleat_timer.expires = jiffies + timer_period;
-		add_timer(&aleat_timer);
-	}
-	up(&semreaders);
+	    pares = 1;
+	    fich->private_data = (void *) &pares;
+	    //controlamos que el módulo no pueda descargarse mientras haya consumidor
+	    try_module_get(THIS_MODULE);
+    }
+    else {
+	    impares = 2;
+	    fich->private_data = (void *) &impares;
+	    //Reconfiguramos el parámetro expires del timer y lo lanzamos
+	    aleat_timer.expires = jiffies + ticks;
+	    add_timer(&aleat_timer);
+    }
+    up(&semreaders);
     
     return SUCCESS;
 }
@@ -244,49 +242,42 @@ static int modtimer_release(struct inode *nodo, struct file *fich){
     int tipoval = *tipo;
     
     if(down_interruptible(&semreaders)){
-		return -EINTR;
+	return -EINTR;
     }
     
     if(atomic_read(&numUsers) == 2){
-		//desactivamos temporizador
-		del_timer_sync(&aleat_timer);
-		// esperamos a que acaben los trabajos diferidos
-		//if(work_pending((struct work_struct *) &my_work))
-			//flush_scheduled_work();
-		flush_workqueue(my_wq);
-		//vaciamos el buffer circular
-		while(!is_empty_cbuffer_t(cbuffer)){
-			remove_cbuffer_t(cbuffer);
-		}
-		printk(KERN_INFO "modtimer: Se pira el primer lector.\n");		   
-	}else{
-		
-		 // Permitimos que el módulo pueda descargarse
-			module_put(THIS_MODULE);
-			printk(KERN_INFO "modtimer: Se pira el segundo lector y deja borrar el modulo.\n");		   
+	//desactivamos temporizador
+	del_timer_sync(&aleat_timer);
+	// esperamos a que acaben los trabajos diferidos
+	flush_workqueue(my_wq);
+	//vaciamos el buffer circular
+	while(!is_empty_cbuffer_t(cbuffer)){
+	    remove_cbuffer_t(cbuffer);
+	}		   
+    }else{
+	 // Permitimos que el módulo pueda descargarse
+	module_put(THIS_MODULE);		   
+    }
+    //Limpiamos las listas
+    if(tipoval == 1) {
+	// Si el semaforo está bloqueado lo desbloqueamos
+	if(consLockedpar > 0){
+	    up(&sembarrerapar);
+	    consLockedpar--;
 	}
-	//Limpiamos las listas
-	if(tipoval == 1) {
-		// Si el semaforo está bloqueado lo desbloqueamos
-		if(consLockedpar > 0){
-			up(&sembarrerapar);
-			consLockedpar--;
-		}
-		cleanUpList(&linkedlistpar, &semlistpar, &linkedlistparcount);
-		printk(KERN_INFO "modtimer: Se elimina la lista de pares.\n");		   
+	cleanUpList(&linkedlistpar, &semlistpar, &linkedlistparcount);		   
+    }
+    else {
+	// Si el semaforo está bloqueado lo desbloqueamos
+	if(consLockedimpar > 0){
+	    up(&sembarreraimpar);
+	    consLockedimpar--;
 	}
-	else {
-		// Si el semaforo está bloqueado lo desbloqueamos
-		if(consLockedimpar > 0){
-			up(&sembarreraimpar);
-			consLockedimpar--;
-		}
-		cleanUpList(&linkedlistimpar, &semlistimpar, &linkedlistimparcount);
-		printk(KERN_INFO "modtimer: Se elimina la lista de impares.\n");		   
-	}
-	//Decrementamos el número de consumidores
-	atomic_dec(&numUsers);
-	up(&semreaders);
+	cleanUpList(&linkedlistimpar, &semlistimpar, &linkedlistimparcount);	   
+    }
+    //Decrementamos el número de consumidores
+    atomic_dec(&numUsers);
+    up(&semreaders);
 	
     return SUCCESS;
 }
@@ -299,79 +290,64 @@ static ssize_t modtimer_read(struct file *filp, char __user *buf, size_t len, lo
     int *tipo = (int *)filp->private_data;
     int tipoval = *tipo;
     
-    
     /* Pares */
     if(tipoval == 1) {
-		
-		if(linkedlistparcount == 0){   //No hay elementos en la lista
-			// Bloqueamos al consumidor hasta que haya elementos en la lista enlazada
-			consLockedpar++;
-			printk(KERN_INFO "modtimer: Consumidor par bloqueado. Esperando elementos\n");
-			if(down_interruptible(&sembarrerapar)){
-				consLockedpar--;
-				return -EINTR;
-			}
-		}
-		// Consumimos un elemento de la lista
-		if(down_interruptible(&semlistpar)){
-			return -EINTR;
-		}
-		if(!list_empty(&linkedlistpar)){
-			nodo = list_entry(linkedlistpar.next, list_item_t, links);
-			dato = nodo->data;
-			// Eliminamos el elemento de la lista
-			list_del(linkedlistpar.next);  //Eliminamos el primer elemento de la lista
-			linkedlistparcount--;
-			vfree(nodo);
-		}
-		up(&semlistpar);
-
-		//Copiamos el elemento al espacio de usuario
-		sprintf(&kbuf[0], "%u\n", dato);
-		strcat(kbuf, "\0");
-		if(copy_to_user(buf, kbuf, strlen(kbuf))){
-			   return -EINVAL;
-		}
-		*off += strlen(kbuf);
-		
+	if(linkedlistparcount == 0){   //No hay elementos en la lista
+	    // Bloqueamos al consumidor hasta que haya elementos en la lista enlazada
+	    consLockedpar++;
+	    printk(KERN_INFO "modtimer: Consumidor par bloqueado. Esperando elementos\n");
+	    if(down_interruptible(&sembarrerapar)){
+		consLockedpar--;
+		return -EINTR;
+	    }
 	}
-	/* Impares */
-	else {
-		
-		if(linkedlistimparcount == 0) {   //No hay elementos en la lista
-			// Bloqueamos al consumidor hasta que haya elementos en la lista enlazada
-			consLockedimpar++;
-			printk(KERN_INFO "modtimer: Consumidor impar bloqueado. Esperando elementos\n");
-			if(down_interruptible(&sembarreraimpar)){
-				consLockedimpar--;
-				return -EINTR;
-			}
-		}
-		// Consumimos un elemento de la lista
-		if(down_interruptible(&semlistimpar)){
-			return -EINTR;
-		}
-		if(!list_empty(&linkedlistimpar)){
-			nodo = list_entry(linkedlistimpar.next, list_item_t, links);
-			dato = nodo->data;
-			// Eliminamos el elemento de la lista
-			list_del(linkedlistimpar.next);  //Eliminamos el primer elemento de la lista
-			linkedlistimparcount--;
-			vfree(nodo);
-		}
-		up(&semlistimpar);
-
-		//Copiamos el elemento al espacio de usuario
-		sprintf(&kbuf[0], "%u\n", dato);
-		strcat(kbuf, "\0");
-		if(copy_to_user(buf, kbuf, strlen(kbuf))){
-			   return -EINVAL;
-		}
-		*off += strlen(kbuf);
-	
+	// Consumimos un elemento de la lista
+	if(down_interruptible(&semlistpar)){
+	    return -EINTR;
 	}
-
+	if(!list_empty(&linkedlistpar)){
+		nodo = list_entry(linkedlistpar.next, list_item_t, links);
+		dato = nodo->data;
+		// Eliminamos el elemento de la lista
+		list_del(linkedlistpar.next);  //Eliminamos el primer elemento de la lista
+		linkedlistparcount--;
+		vfree(nodo);
+	}
+	up(&semlistpar);
+    }
+    /* Impares */
+    else {
+	if(linkedlistimparcount == 0) {   //No hay elementos en la lista
+	    // Bloqueamos al consumidor hasta que haya elementos en la lista enlazada
+	    consLockedimpar++;
+	    printk(KERN_INFO "modtimer: Consumidor impar bloqueado. Esperando elementos\n");
+	    if(down_interruptible(&sembarreraimpar)){
+		consLockedimpar--;
+		return -EINTR;
+	    }
+	}
+	// Consumimos un elemento de la lista
+	if(down_interruptible(&semlistimpar)){
+	    return -EINTR;
+	}
+	if(!list_empty(&linkedlistimpar)){
+		nodo = list_entry(linkedlistimpar.next, list_item_t, links);
+		dato = nodo->data;
+		// Eliminamos el elemento de la lista
+		list_del(linkedlistimpar.next);  //Eliminamos el primer elemento de la lista
+		linkedlistimparcount--;
+		vfree(nodo);
+	}
+	up(&semlistimpar);
+    }
     
+    //Copiamos el elemento al espacio de usuario
+    sprintf(&kbuf[0], "%u\n", dato);
+    strcat(kbuf, "\0");
+    if(copy_to_user(buf, kbuf, strlen(kbuf))){
+	   return -EINVAL;
+    }
+    *off += strlen(kbuf);
     return strlen(kbuf);
 }
 
@@ -418,7 +394,7 @@ static ssize_t modconfig_write(struct file *filp, const char __user *buf, size_t
 
     /* Leemos ordenes y modificamos la variable especificada */
     if(sscanf(&kbuf[0],"timer_period_ms %i",&num)) {
-        timer_period = (num/1000)*HZ; // pasamos de ms a tics
+        timer_period = num;
         printk(KERN_INFO "modtimer: changed timer_period_ms to %i\n", num);
     }else if(sscanf(&kbuf[0],"emergency_threshold %i",&num)) {
         emergency_threshold = num;
@@ -467,7 +443,7 @@ int init_modtimer_module( void )
     timer_period = DEF_TICKS;
     max_random = DEF_MAXRDM;
     emergency_threshold = DEF_THRESHOLD;
-    aleat_timer.expires = jiffies + timer_period;
+    aleat_timer.expires = jiffies + (int) (((float) timer_period / (float) 1000) * (float) HZ);;
     aleat_timer.data = 0;
     aleat_timer.function = generate_aleat;
     
@@ -475,8 +451,8 @@ int init_modtimer_module( void )
     my_wq = create_workqueue("my_wq");
     
     if(!my_wq) {
-		return -ENOMEM;
-	}	
+	return -ENOMEM;
+    }	
 
     INIT_WORK((struct work_struct *) &my_work, copy_items_into_list);
     my_work.cbuffer = cbuffer;
