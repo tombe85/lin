@@ -1,0 +1,33 @@
+** Definición **
+Los mapas, también conocidos como arrays asociativos, son una colección de pares (clave, valor). 
+Los mapas pueden estar implementados con tablas hash o bien árboles binarios de búsqueda. Dependiendo de el uso que se le vaya a dar es más conveniente uno que otro.
+
+** Operaciones **
+Deben cumplir al menos con las operaciones de añadir(clave, valor), eliminar(clave) y consultar(clave)
+
+** Mapas en el kernel **
+En el kernel de linux se proporciona una estructura de datos de mapa simple y eficiente, cuyo cometido es mapear un número de identificación único (UID) a un puntero de datos.
+Se utilizan árboles binarios para realizar el mapeo.
+También se proporciona una función de reserva de memoria que genera el UID y lo añade al par (clave,valor), para ser introducido en el mapa.
+
+Como ejemplo de mapas, en GNU/Linux, se utiliza la estructura idr. Se utiliza para mapear UIDs del espacio de usuario, por ejemplo IDs de temporizadores POSIX, a sus estructuras de datos asociadas del kernel.
+
+** Ejemplo **
+El uso e idr es el siguiente:
+	
+	int id;
+	struct idr idr_huh;
+	struct my_struct *ptr = ...;
+	idr_init(&idr_huh);	//Inicializa un idr
+	do{
+		if(!idr_pre_get(&idr_huh, GFP_KERNEL))	// Redimensiona el arbol binario si es necesario
+			return -ENOSPC;
+		ret = idr_get_new(&idr_huh, (void *)ptr, &id);	// Obtiene un nuevo UID y añade el par (UID,ptr) al idr. 0 si éxito
+	}while(ret == -EAGAIN);
+	
+	ptr = (struct my_struct *)idr_find(&idr_huh, id);	//Consulta de la clave id
+	if(!ptr)
+		return -EINVAL;
+	
+	idr_remove(&idr_huh, id);	//Elimina el par (id,valor) del idr
+	idr_destroy(&idr_huh);		// Destruye el idr. Libera sólo la memoria no utilizada por el idr, hay que remover antes los pares. -> idr_remove_all(&idr_huh);
