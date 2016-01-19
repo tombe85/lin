@@ -1,0 +1,38 @@
+Colas:
+- Definición genérica (pág 96)
+
+- Como se implementa en el kernel --> kfifo (pág 97)
+
+- Funcionamiento: (pág 96-97)
+		- Crear una cola
+		- Encolar elementos
+		- Desencolar elementos
+		- Devolver tamaño de la cola
+		- Reiniciar la cola
+
+- Ejemplo (pág 99-100)
+
+
+
+Mapas:
+- Definición genérica --> concepto de Hashmap (pág 100)
+
+- Como se implemeta a nivel kernel y definición (pág 101)
+
+- Operaciones con mapas (pág 101-103)
+
+- Ejemplo ?? --> buscar alguno o no
+
+
+Árboles:
+- Definición genérica matemática (pág 103)
+
+- Implementación a nivel kernel
+
+- Tipos
+
+- Operaciones con árboles
+
+- Ejemplo ?? --> Si hay alguno por internet
+
+
