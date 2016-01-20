@@ -1,16 +1,21 @@
 ** Definición **
-Los mapas, también conocidos como arrays asociativos, son una colección de pares (clave, valor). 
-Los mapas pueden estar implementados con tablas hash o bien árboles binarios de búsqueda. Dependiendo de el uso que se le vaya a dar es más conveniente uno que otro.
+Los mapas, también conocidos como arrays asociativos, son una colección de pares (clave, valor) en los que a través de la clave se accede a un valor. 
+Los mapas pueden estar implementados con tablas hash, en las cuales se aplica una función a la clave para indicar la posición de la tabla, o bien árboles binarios de búsqueda, e los que los pares (clave, valor) estarán ordenados según su clave. 
+Dependiendo de el uso que se le vaya a dar es más conveniente utilizar uno que otro.
 
 ** Operaciones **
-Deben cumplir al menos con las operaciones de añadir(clave, valor), eliminar(clave) y consultar(clave)
+Deben cumplir al menos con las operaciones de 
+	
+	añadir(clave, valor)
+	eliminar(clave)
+	consultar(clave)
 
 ** Mapas en el kernel **
-En el kernel de linux se proporciona una estructura de datos de mapa simple y eficiente, cuyo cometido es mapear un número de identificación único (UID) a un puntero de datos.
+En el kernel de linux se proporciona una estructura de datos de mapa simple y eficiente, cuyo cometido es mapear un número de identificación único (UID) a un puntero de datos (estructura de datos).
 Se utilizan árboles binarios para realizar el mapeo.
-También se proporciona una función de reserva de memoria que genera el UID y lo añade al par (clave,valor), para ser introducido en el mapa.
+También se proporciona una función de reserva de memoria (allocate) que se encarga de generar el UID para la clave y añadir el par (clave,valor) en el mapa.
 
-Como ejemplo de mapas, en GNU/Linux, se utiliza la estructura idr. Se utiliza para mapear UIDs del espacio de usuario, por ejemplo IDs de temporizadores POSIX, a sus estructuras de datos asociadas del kernel.
+Como ejemplo de mapas, en GNU/Linux, se utiliza la estructura idr. Se utiliza para mapear UIDs del espacio de usuario, por ejemplo IDs de temporizadores POSIX (ver definición de temporizadores POSIX), a sus estructuras de datos asociadas del kernel.
 
 ** Ejemplo **
 El uso e idr es el siguiente:
@@ -18,7 +23,9 @@ El uso e idr es el siguiente:
 	int id;
 	struct idr idr_huh;
 	struct my_struct *ptr = ...;
+	
 	idr_init(&idr_huh);	//Inicializa un idr
+	
 	do{
 		if(!idr_pre_get(&idr_huh, GFP_KERNEL))	// Redimensiona el arbol binario si es necesario
 			return -ENOSPC;
