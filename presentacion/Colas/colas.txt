@@ -1,0 +1,17 @@
+Definicion generica:
+-------------------
+
+Un patrón de programación común en cualquier núcleo del sistema operativo es el productor y el consumidor. En este patrón, un productor crea datos, mientras que un consumidor, a su vez, conduce, procesa o de lo contrario consume los datos.
+A menudo la forma más fácil de implementar este patrón es con una cola. El productor coloca datos en la cola y el consumidor toma los datos de la cola. El consumidor recupera los datos en el orden en que se puso en cola. Es decir, los primeros en entrar en la cola de datos son los primeros en salir. Por esta razón, las colas son también llamados FIFOs, abreviatura de "first-in, first-out".
+
+
+							(imagen de una cola)
+
+La implementacion generica de una cola en el kernel de linux se llama kfifo y se encuentra implementada en kernel/kfifo.c y declarada en <linux/kfifo.h>. En esta sección se analiza la API después de una actualización en 2.6.33. El uso es ligeramente diferente en las versiones anteriores a 2.6.33.
+
+
+
+Colas en el kernel de linux (kfifo):
+-----------------------------------
+
+Las kfifos de Linux funcionan como la mayoría de otras abstracciones de cola, proporcionando dos operaciones principales: "enqueue"(encolar) y "dequeue"(desencolar). El kfifo mantiene dos off-set en la cola: un "in offset" y un "out offset". El out offset es el punto en la cola desde el cual se desencolara la proxima vez. El out offset es simpre menor o igual al in offset.
