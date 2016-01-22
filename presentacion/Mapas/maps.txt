@@ -1,6 +1,6 @@
 ** Definición **
 Los mapas, también conocidos como arrays asociativos, son una colección de pares (clave, valor) en los que a través de la clave se accede a un valor. 
-Los mapas pueden estar implementados con tablas hash, en las cuales se aplica una función a la clave para indicar la posición de la tabla, o bien árboles binarios de búsqueda, e los que los pares (clave, valor) estarán ordenados según su clave. 
+Los mapas pueden estar implementados con tablas hash, en las cuales se aplica una función a la clave para indicar la posición de la tabla, o bien árboles binarios de búsqueda autobalanceados o rojinegros, e los que los pares (clave, valor) estarán ordenados según su clave. 
 Dependiendo de el uso que se le vaya a dar es más conveniente utilizar uno que otro.
 
 ** Operaciones **
@@ -18,6 +18,27 @@ También se proporciona una función de reserva de memoria (allocate) que se enc
 Como ejemplo de mapas, en GNU/Linux, se utiliza la estructura idr. Se utiliza para mapear UIDs del espacio de usuario, por ejemplo IDs de temporizadores POSIX (ver definición de temporizadores POSIX), a sus estructuras de datos asociadas del kernel.
 
 ** Ejemplo **
+La estructura idr es:
+
+	struct idr {
+		struct idr_layer __rcu  *hint;		//A recent memory pointer data structures of the idr_layer
+		struct idr_layer __rcu  *top;		//IDR idr_layer tree top, the root of the tree
+		int                     layers;		//The idr_layer layer in the IDR tree number
+		int                     cur;		//current pos for cyclic allocation
+		spinlock_t              lock;		
+		int                     id_free_cnt;	//The number of idr_layer idr_layer in the remaining free list
+		struct idr_layer        *id_free;	//Pointer to a idr_layer free list
+	};
+	
+	struct idr_layer {
+		int                     prefix; 		/* the ID prefix of this idr_layer */
+		int                     layer;  		/* distance from leaf */
+		struct idr_layer __rcu  *ary[1<<IDR_BITS];
+		int                     count; 			/* When zero, we can release it */
+		DECLARE_BITMAP(bitmap, IDR_SIZE);		//Mark ary bitmap, an array of tag the idr_layer usage
+		struct rcu_head         rcu_head;
+	};
+	
 El uso e idr es el siguiente:
 	
 	int id;
