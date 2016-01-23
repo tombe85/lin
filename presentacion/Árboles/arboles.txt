@@ -1,0 +1,20 @@
+** Definición formal **
+Un árbol es una estructura de datos que simula la forma de un árbol, teniendo un nodo raíz del que parten ramas a otros nodos sucesivamente hasta llegar a las hojas.
+Un árbol binario como mucho tiene dos ramas por nodo. Si es de búsqueda exige que los nodos estén ordenados. Si es auto-balanceado se debe garantizar que la profindidad a ambos lados difiera como mucho en 1 en todos los nodos.
+---> Foto de árbol binario de búsqueda autobalanceado
+Un caso concreto de árbol binario de búsqueda auto-balanceado son los árboles rojinegros que cumplen con lo siguiente:
+	Un nodo es rojo o negro
+	Los nodos hoja son negras
+	Los nodos hoja no contienen datos
+	Todos los nodos no-hoja tienen dos hijos
+	Si un nodo es rojo sus dos hijos son negros
+	El camino desde un nodo a una de sus hojas contiene el mismo número de nodos negros como el camino más corto a cualquiera de sus otras hojas.
+Si la inserción y la eliminación cumplen con estas características, el árbol será semi-balanceado.
+
+** En el kernel **
+La implementación en Linux de los árboles rojinegros está en <linux/rbtree.h> y cumple con las especificaciones previas de árboles rojinegros.
+La raíz del árbol está definida en la estructura rb_root, así que para crear un nuevo rbtree -> struct rb_root root = RB_ROOT;
+Los nodos se definen en la estructura rb_node.
+La implementación de rbtree en el kernel no ofrecen las funciones de búsqueda e inserción. El programador debe definirlas utilizando las funciones de ayuda de rbtree y sus propios operadores de comparación.
+
+** Ejemplo **
