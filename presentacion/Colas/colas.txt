@@ -15,3 +15,30 @@ Colas en el kernel de linux (kfifo):
 -----------------------------------
 
 Las kfifos de Linux funcionan como la mayoría de otras abstracciones de cola, proporcionando dos operaciones principales: "enqueue"(encolar) y "dequeue"(desencolar). El kfifo mantiene dos off-set en la cola: un "in offset" y un "out offset". El out offset es el punto en la cola desde el cual se desencolara la proxima vez. El out offset es simpre menor o igual al in offset.
+
+
+
+Estructura de kfifo en el kernel (kfifo.h):
+------------------------------------------
+
+struct __kfifo {
+	unsigned int	in;
+	unsigned int	out;
+	unsigned int	mask;
+	unsigned int	esize;
+	void		*data;
+};
+
+
+
+The enqueue (in) operation copies data into the queue, starting at the in offset.When complete, the in offset is incremented by the amount of data enqueued.The dequeue (out) operation copies data out of the queue, starting from the out offset.When complete, the out offset is incremented by the amount of data dequeued.When the out offset is equal to the in offset, the queue is empty: No more data can be dequeued until more data is enqueued.When the in offset is equal to the length of the queue, no more data can be enqueued until the queue is reset.
+
+
+
+
+
+
+
+
+
+
