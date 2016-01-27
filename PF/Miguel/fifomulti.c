@@ -24,9 +24,10 @@ MODULE_AUTHOR("Miguel Higuera Romero & Alejandro Nicolás Ibarra Loik");
 struct list_head fifolist;
 int listFifoCount;
 typedef struct {
-	char name[MAX_NAME_LEN]
+	char name[MAX_NAME_LEN];
 	cbuffer_t *cbuffer;
-	int prodcount = 0, conscount = 0;
+	int prodcount = 0;
+	int conscount = 0;
 	struct semaphore mtx;
 	struct semaphore sem_prod;
 	struct semaphore sem_cons;
@@ -47,8 +48,17 @@ static ssize_t fifoproc_write(struct file *filp, const char __user *buf, size_t 
     char kbuff[BUF_LEN];	     //Copia de buffer de usuario
     char item;
     int i;
+	fifolist_item_t *fifo, *nodo;
+	struct list_head *cur_node = NULL;
 
     char *fifoname = (char *) PDE_DATA(filp->f_inode);
+
+	list_for_each(cur_node, &fifolist){
+		nodo = list_entry(cur_node,fifolist_item_t, links);
+		if(strcmp(nodo->name, fifoname)){
+			fifo = nodo;
+		}
+	}
 
     if (len > available_space || len > CBUF_SIZE) {
         printk(KERN_INFO "fifoproc: not enough space!!\n");
@@ -64,41 +74,41 @@ static ssize_t fifoproc_write(struct file *filp, const char __user *buf, size_t 
 
     /* AQUÍ CÓDIGO */
 
-    if (down_interruptible(&mtx)){
+    if (down_interruptible(&(fifo->mtx))){
          return -EINTR;
     }
 
-    while(CBUF_SIZE - size_cbuffer_t(cbuffer) < len && conscount > 0){
-        nr_prod_waiting++;
-        up(&mtx);
-        if(down_interruptible(&sem_prod)){
-            down(&mtx);
-            nr_prod_waiting--;
-            up(&mtx);
+    while(CBUF_SIZE - size_cbuffer_t(fifo->cbuffer) < len && fifo->conscount > 0){
+        fifo->nr_prod_waiting++;
+        up(&(fifo->mtx));
+        if(down_interruptible(&(fifo->sem_prod))){
+            down(&(fifo->mtx));
+            fifo->nr_prod_waiting--;
+            up(&(fifo->mtx));
             return -EINTR;
         }
 
-        if(down_interruptible(&mtx)){
+        if(down_interruptible(&(fifo->mtx))){
             return -EINTR;
         }
     }
 
-    if(conscount == 0){
-        up(&mtx);
+    if(fifo->conscount == 0){
+        up(&(fifo->mtx));
         return -EPIPE;
     }
 
     for(i=0; i < len; i++){
         item = kbuff[i];
-        insert_cbuffer_t(cbuffer, item);
+        insert_cbuffer_t(fifo->cbuffer, item);
     }
 
-    if(nr_cons_waiting > 0){
-        up(&sem_cons);
-        nr_cons_waiting--;
+    if(fifo->nr_cons_waiting > 0){
+        up(&(fifo->sem_cons));
+        fifo->nr_cons_waiting--;
     }
 
-    up(&mtx);
+    up(&(fifo->mtx));
 
     return len;
 }
@@ -110,50 +120,62 @@ static ssize_t fifoproc_read(struct file *filp, char __user *buf, size_t len, lo
     char *item = NULL;
     int i;
 
+	fifolist_item_t *fifo, *nodo;
+	struct list_head *cur_node = NULL;
+
+    char *fifoname = (char *) PDE_DATA(filp->f_inode);
+
+	list_for_each(cur_node, &fifolist){
+		nodo = list_entry(cur_node,fifolist_item_t, links);
+		if(strcmp(nodo->name, fifoname)){
+			fifo = nodo;
+		}
+	}
+
     if(len > CBUF_SIZE || len > BUF_LEN){
 		return -ENOSPC;
 	}
 
     /* AQUÍ EL CÓDIGO */
-    if(down_interruptible(&mtx)){
+    if(down_interruptible(&(fifo->mtx))){
         return -EINTR;
     }
 
-    while(size_cbuffer_t(cbuffer) < len && prodcount > 0){
-        nr_cons_waiting++;
+    while(size_cbuffer_t(fifo->cbuffer) < len && fifo->prodcount > 0){
+        fifo->nr_cons_waiting++;
 
-        up(&mtx);
+        up(&(fifo->mtx));
 
-        if(down_interruptible(&sem_cons)){
-            down(&mtx);
-            nr_cons_waiting--;
-            up(&mtx);
+        if(down_interruptible(&(fifo->sem_cons))){
+            down(&(fifo->mtx));
+            fifo->nr_cons_waiting--;
+            up(&(fifo->mtx));
             return -EINTR;
         }
 
-        if(down_interruptible(&mtx)){
+        if(down_interruptible(&(fifo->mtx))){
             return -EINTR;
         }
     }
 
-    if(prodcount == 0){
-        up(&mtx);
+    if(fifo->prodcount == 0){
+        up(&(fifo->mtx));
         return 0;
     }
 
     for(i=0; i < len; i++){
-        item = head_cbuffer_t(cbuffer);
+        item = head_cbuffer_t(fifo->cbuffer);
 		kbuff[i] = *item;
-        remove_cbuffer_t(cbuffer);
+        remove_cbuffer_t(fifo->cbuffer);
     }
     kbuff[i] = '\0';
 
-    if(nr_prod_waiting > 0){
-        up(&sem_prod);
-        nr_prod_waiting--;
+    if(fifo->nr_prod_waiting > 0){
+        up(&(fifo->sem_prod));
+        fifo->nr_prod_waiting--;
     }
 
-    up(&mtx);
+    up(&(fifo->mtx));
 
     /* Enviamos datos al espacio de ususario */
     if (copy_to_user(buf, kbuff, len))
@@ -170,100 +192,172 @@ static ssize_t fifoproc_read(struct file *filp, char __user *buf, size_t len, lo
 
 static int fifoproc_open(struct inode *nodo, struct file *fich){
     int i = 0;
+	fifolist_item_t *fifo = NULL, *nodo;
+	struct list_head *cur_node = NULL;
+
+    char *fifoname = (char *) PDE_DATA(fich->f_inode);
+
+	list_for_each(cur_node, &fifolist){
+		nodo = list_entry(cur_node,fifolist_item_t, links);
+		if(strcmp(nodo->name, fifoname)){
+			fifo = nodo;
+		}
+	}
+
     if (fich->f_mode & FMODE_READ){
-        if(down_interruptible(&mtx)){
+        if(down_interruptible(&(fifo->mtx))){
 	       return -EINTR;
         }
-        conscount++;
-        if(prodcount == 0){
-            up(&mtx);
-            if(down_interruptible(&sem_cons)){
-                down(&mtx);
-                conscount--;
-                up(&mtx);
+        fifo->conscount++;
+        if(fifo->prodcount == 0){
+            up(&(fifo->mtx));
+            if(down_interruptible(&(fifo->sem_cons))){
+                down(&(fifo->mtx));
+                fifo->conscount--;
+                up(&(fifo->mtx));
                 return -EPIPE;
             }
-            if(down_interruptible(&mtx)){
+            if(down_interruptible(&(fifo->mtx))){
                 return -EPIPE;
             }
         }
-        if(prodcount > 0 && conscount == 1){    // estaban esperando un productor
-            for(i=0; i < prodcount; i++)
-                up(&sem_prod);
+        if(fifo->prodcount > 0 && fifo->conscount == 1){    // estaban esperando un productor
+            for(i=0; i < fifo->prodcount; i++)
+                up(&(fifo->sem_prod));
         }
-        up(&mtx);
+        up(&(fifo->mtx));
     }else{
-        if(down_interruptible(&mtx)){
+        if(down_interruptible(&(fifo->mtx))){
 	       return -EINTR;
         }
-        prodcount++;
-        if(conscount == 0){
-            up(&mtx);
-            if(down_interruptible(&sem_prod)){
-                down(&mtx);
-                conscount--;
-                up(&mtx);
+        fifo->prodcount++;
+        if(fifo->conscount == 0){
+            up(&(fifo->mtx));
+            if(down_interruptible(&(fifo->sem_prod))){
+                down(&(fifo->mtx));
+                fifo->conscount--;
+                up(&(fifo->mtx));
                 return -EPIPE;
             }
-            if(down_interruptible(&mtx)){
+            if(down_interruptible(&(fifo->mtx))){
                 return -EPIPE;
             }
         }
-        if(conscount > 0 && prodcount == 1){    // estaban esperando un productor
-            for(i=0; i < conscount; i++)
-                up(&sem_cons);
+        if(fifo->conscount > 0 && fifo->prodcount == 1){    // estaban esperando un productor
+            for(i=0; i < fifo->conscount; i++)
+                up(&(fifo->sem_cons));
         }
-        up(&mtx);
+        up(&(fifo->mtx));
     }
     return SUCCESS;
 }
 
 static int fifoproc_release(struct inode *nodo, struct file *fich){
+	fifolist_item_t *fifo = NULL, *nodo;
+	struct list_head *cur_node = NULL;
+
+    char *fifoname = (char *) PDE_DATA(fich->f_inode);
+
+	list_for_each(cur_node, &fifolist){
+		nodo = list_entry(cur_node,fifolist_item_t, links);
+		if(strcmp(nodo->name, fifoname)){
+			fifo = nodo;
+		}
+	}
+
     if (fich->f_mode & FMODE_READ){
-        if(down_interruptible(&mtx)){
+        if(down_interruptible(&(fifo->mtx))){
 	       return -EINTR;
         }
-        conscount--;
-        if(conscount == 0 && nr_prod_waiting > 0){
-			int i, top = nr_prod_waiting;
+        fifo->conscount--;
+        if(fifo->conscount == 0 && fifo->nr_prod_waiting > 0){
+			int i, top = fifo->nr_prod_waiting;
 			for(i=0; i < top; i++){
-				up(&sem_prod);
-				nr_prod_waiting--;
+				up(&(fifo->sem_prod));
+				fifo->nr_prod_waiting--;
 			}
 		}
-        up(&mtx);
+        up(&(fifo->mtx));
     }else{
-        if(down_interruptible(&mtx)){
+        if(down_interruptible(&(fifo->mtx))){
 	       return -EINTR;
         }
-        prodcount--;
-        if(prodcount == 0 && nr_cons_waiting > 0){
-			int i, top = nr_cons_waiting;
+        fifo->prodcount--;
+        if(fifo->prodcount == 0 && fifo->nr_cons_waiting > 0){
+			int i, top = fifo->nr_cons_waiting;
 			for(i=0; i < top; i++){
-				up(&sem_cons);
-				nr_cons_waiting--;
+				up(&(fifo->sem_cons));
+				fifo->nr_cons_waiting--;
 			}
 		}
-        up(&mtx);
+        up(&(fifo->mtx));
     }
-    if(down_interruptible(&mtx)){
+    if(down_interruptible(&(fifo->mtx))){
 		return -EINTR;
 	}
-	if(prodcount == 0 && conscount == 0){
-		int size = size_cbuffer_t(cbuffer), i;
+	if(fifo->prodcount == 0 && fifo->conscount == 0){
+		int size = size_cbuffer_t(fifo->cbuffer), i;
 		for(i=0; i < size; i++){
-			remove_cbuffer_t(cbuffer);
+			remove_cbuffer_t(fifo->cbuffer);
 		}
 	}
-	up(&mtx);
+	up(&(fifo->mtx));
     return SUCCESS;
 }
+
+
+/* Función write */
+static ssize_t fifocontrol_write(struct file *filp, const char __user *buf, size_t len, loff_t *off) {
+    int available_space = BUF_LEN-1;
+    char kbuff[BUF_LEN];	     //Copia de buffer de usuario
+    int i;
+	char name[MAX_NAME_LEN];
+
+    if (len > available_space || len > CBUF_SIZE) {
+        printk(KERN_INFO "fifomulti: not enough space!!\n");
+        return -ENOSPC;
+    }
+
+    /* Transfer data from user to kernel space */
+    if (copy_from_user( &kbuff[0], buf, len ))
+        return -EFAULT;
+
+    kbuff[len] = '\0'; 	/* Add the '\0' */
+    *off+=len;            /* Update the file pointer */
+
+    /* AQUÍ CÓDIGO */
+
+	if(sscanf(&kbuff[0],"create %s", name)) {
+        if(addFifo(name)){
+			return -ENOMEM;
+		}
+
+        /* Informamos */
+        printk(KERN_INFO "fifomulti: Added fifo called \n", name);
+
+    }else if(sscanf(&kbuff[0],"delete %s", name)){
+		if(!removeFifo(name, TRUE)){
+			return -ENOENT;
+		}
+		/* Informamos */
+        printk(KERN_INFO "fifomulti: Removed fifo called \n", name);
+	}else{
+		return -EINVAL;
+	}
+
+    return len;
+}
+
 
 static const struct file_operations proc_entry_fops = {
     .read = fifoproc_read,
     .write = fifoproc_write,
     .open = fifoproc_open,
     .release = fifoproc_release,
+};
+
+static const struct file_operations proc_control_fops = {
+    .write = fifocontrol_write,
 };
 
 int addFifo(char * name){
@@ -341,6 +435,7 @@ int init_fifoproc_module( void )
     }
 	proc_control = proc_create( "control", 0666, proc_dir, &proc_control_fops);
     if (proc_entry == NULL) {
+		remove_proc_entry("fifomulti", NULL);
         printk(KERN_INFO "fifomulti: Can't create /proc entry\n");
         return -ENOMEM;
     }
