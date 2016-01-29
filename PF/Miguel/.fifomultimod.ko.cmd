@@ -1,0 +1,1 @@
+cmd_/home/kernel/lin/github/lin/PF/Miguel/fifomultimod.ko := ld -r -m elf_x86_64 -T /usr/src/linux-headers-3.14.1.lin/scripts/module-common.lds --build-id  -o /home/kernel/lin/github/lin/PF/Miguel/fifomultimod.ko /home/kernel/lin/github/lin/PF/Miguel/fifomultimod.o /home/kernel/lin/github/lin/PF/Miguel/fifomultimod.mod.o
