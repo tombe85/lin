@@ -3,6 +3,7 @@
 #include <linux/proc_fs.h>
 #include <linux/string.h>
 #include <linux/vmalloc.h>
+#include <linux/sort.h>
 #include <asm-generic/uaccess.h>
 #include <linux/ftrace.h>
 #include <linux/spinlock.h>
@@ -15,6 +16,8 @@ MODULE_AUTHOR("Miguel Higuera Romero & Alejandro Nicolás Ibarra Loik");
 
 /* Constantes */
 #define BUF_LEN 100
+#define TRUE 1
+#define FALSE 0
 
 /* Variables globales */
 const int MAX_NAME_LEN = 100;
@@ -39,7 +42,7 @@ struct semaphore multilist_lock;
 
 
 /* Entrada de proc */
-static struct proc_dir_entry *proc _dir;
+static struct proc_dir_entry *proc_dir;
 static struct proc_dir_entry *proc_entry;
 static struct proc_dir_entry *proc_control;
 
@@ -54,9 +57,20 @@ void sortlist(multilist_item_t *lista);
 void addElement(int num, multilist_item_t *lista);
 void removeElement(int num, multilist_item_t *lista);
 void cleanUpList(multilist_item_t *lista);
+static ssize_t listproc_write(struct file *filp, const char __user *buf, size_t len, loff_t *off);
+static ssize_t listproc_read(struct file *filp, char __user *buf, size_t len, loff_t *off);
+static ssize_t listcontrol_write(struct file *filp, const char __user *buf, size_t len, loff_t *off);
 
 
 
+static const struct file_operations proc_entry_fops = {
+    .read = listproc_read,
+    .write = listproc_write,
+};
+
+static const struct file_operations proc_control_fops = {
+    .write = listcontrol_write,
+};
 
 
 
@@ -64,6 +78,7 @@ void cleanUpList(multilist_item_t *lista);
 /* Función write */
 static ssize_t listproc_write(struct file *filp, const char __user *buf, size_t len, loff_t *off) {
     int available_space = BUF_LEN-1;
+    int num;
     char kbuff[BUF_LEN];         //Copia de buffer de usuario
     char procstr[BUF_LEN];
     multilist_item_t *lista;
@@ -140,9 +155,10 @@ static ssize_t listproc_read(struct file *filp, char __user *buf, size_t len, lo
     struct list_head* cur_node=NULL;
     char kbuff[BUF_LEN];                //buffer final
     char strtmp[BUF_LEN];               //cadenas temporales
-    kbuff[0] = '\0';
     int cerrojo = 1;
     multilist_item_t *lista;
+    
+    kbuff[0] = '\0';
 
 
     lista = (multilist_item_t *) PDE_DATA(filp->f_inode);
@@ -193,7 +209,7 @@ static ssize_t listcontrol_write(struct file *filp, const char __user *buf, size
     char name[100];
     int ret;
 
-    if (len > available_space || len > CBUF_SIZE) {
+    if (len > available_space) {
         printk(KERN_INFO "multilist: not enough space!!\n");
         return -ENOSPC;
     }
@@ -241,7 +257,7 @@ static ssize_t listcontrol_write(struct file *filp, const char __user *buf, size
 int addList(char * name) {
 
     multilist_item_t *nodo;
-    int len = MAX_NAME_LEN;
+    int len = 100;
     
     nodo = (multilist_item_t *)vmalloc(sizeof(multilist_item_t));
     nodo->name = (char *)vmalloc(len * sizeof(char));
@@ -374,16 +390,15 @@ void swapp(void * a, void * b, int size) {
 }
 
 /* Funcion que ordena la lista */
-void sortlist(multilist_item_t *lista) {
-    spin_lock(&(lista->lock));    
+void sortlist(multilist_item_t *lista) {   
 
-    list_item_t *arr[listCount];    // Array de punteros que guarda las
+    list_item_t *arr[lista->listCount];    // Array de punteros que guarda las
                                     //direcciones de los nodos de la lista
     int i = 0;
     list_item_t *mynodo;            // Puntero hacia el nodo actual
     struct list_head* cur_node=NULL;
 
-    
+	spin_lock(&(lista->lock)); 
 
     /* Recorremos la lista */
     list_for_each(cur_node, lista->mylist) {
@@ -451,7 +466,7 @@ void cleanUpList(multilist_item_t *lista) {
     spin_lock(&(lista->lock));
 
     /* Recorremos la lista */
-    list_for_each_safe(cur_node, aux, nodo->mylist) {
+    list_for_each_safe(cur_node, aux, lista->mylist) {
         mynodo = list_entry(cur_node,list_item_t, links);
 
         /* Eliminamos nodo de la lista */
@@ -468,16 +483,6 @@ void cleanUpList(multilist_item_t *lista) {
 
 
 
-static const struct file_operations proc_entry_fops = {
-    .read = listproc_read,
-    .write = listproc_write,
-};
-
-static const struct file_operations proc_control_fops = {
-    .write = listcontrol_write,
-};
-
-
 
 /* Función init module */
 int init_listproc_module( void )
@@ -490,15 +495,16 @@ int init_listproc_module( void )
         return -ENOMEM;
     }
 	proc_control = proc_create( "control", 0666, proc_dir, &proc_control_fops);
-    if (proc_entry == NULL) {
+    if (proc_control == NULL) {
 		remove_proc_entry("listmulti", NULL);
         printk(KERN_INFO "listmulti: Can't create /proc entry\n");
         return -ENOMEM;
     }
 
     /* Inicializaciones */
-	INIT_LIST_HEAD(&mylist);
+	INIT_LIST_HEAD(&multilist);
     multilistCount = 0;
+    sema_init(&multilist_lock, 1);
     /* Añadir nodo default a la lista */
     if((ret = addList("default")))
         return ret;

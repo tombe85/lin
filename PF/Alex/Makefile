@@ -1,5 +1,4 @@
-obj-m +=  multilistmod.o
-multilist-objs += multilist.o 
+obj-m +=  multilist.o
 
 all:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
