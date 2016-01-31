@@ -239,11 +239,11 @@ static ssize_t modlist_read(struct file *filp, char __user *buf, size_t len, lof
         item = list_entry(cur_node,list_item_t, links);
         /* Escribimos en msgtmp el dato, el \n y lo concatenamos al kbuff final */
         sprintf(strtmp, "%i\n", item->data);
-	if(strlen(kbuff) < BUF_LEN - strlen(strtmp) && cerrojo){
-  	      strcat(kbuff, strtmp);
-	}else{
-		cerrojo = 0;
-	}
+    	if(strlen(kbuff) < BUF_LEN - strlen(strtmp) && cerrojo){
+      	      strcat(kbuff, strtmp);
+    	}else{
+    		cerrojo = 0;
+    	}
     }
     spin_unlock(&sp);
     strcat(kbuff, "\0");
