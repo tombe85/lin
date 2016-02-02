@@ -263,7 +263,8 @@ int addList(char * name) {
     nodo->name = (char *)vmalloc(len * sizeof(char));
 
     strcpy(nodo->name, name);
-    spin_lock_init(&nodo->lock);
+    
+    spin_lock_init(&(nodo->lock));
 
     /* Inicializamos la lista */
     INIT_LIST_HEAD(nodo->mylist);
@@ -274,7 +275,7 @@ int addList(char * name) {
     }
 
     /* Añadimos la nueva lista a la multilista */
-    list_add_tail(&nodo->links, &multilist);
+    list_add_tail(&(nodo->links), &multilist);
     multilistCount++;
 
     up(&multilist_lock);
@@ -295,8 +296,10 @@ int addList(char * name) {
 /* Funcion para eliminar una lista de la multilista (y directorio /proc) */
 int removeList(char *name, int remproc) {
     struct list_head* cur_node=NULL;
+    struct list_head* cur_node2=NULL;
     struct list_head* aux=NULL;
     multilist_item_t *mynodo;
+    list_item_t *mylistnode;
     int removed = -ENOENT;
 
     if(down_interruptible(&multilist_lock)){
@@ -310,15 +313,41 @@ int removeList(char *name, int remproc) {
 
         /* Si en contramos la lista que buscamos, liberamos recursos */
         if(strcmp(mynodo->name, name) == 0) {
-            /* Eliminamos la lista */
+			
+			
+			/* Bloqueamos la lista */
+			spin_lock(&(mynodo->lock));
+			
+			/* Eliminamos todos los nodos (elementos) de la lista */
+			list_for_each_safe(cur_node2, aux, mynodo->mylist) {
+				
+				mylistnode = list_entry(cur_node2,list_item_t, links);
+				
+				/* Eliminamos nodo de la lista */
+				list_del(cur_node2);
+				
+				/*Liberamos memoria dinámica del nodo */
+				vfree(mylistnode);
+			}		
+			
+			mynodo->listCount = 0;
+			
+			/* Desbloqueamos la lista */
+			spin_unlock(&(mynodo->lock));
+			
+			
+            /* Eliminamos nodo inicial la lista */
             list_del(mynodo->mylist);
-            /* Eliminamos de la lista */
+            
+            /* Eliminamos nodo de la multilista */
             list_del(cur_node);
+            
             /* Liberamos memoria dinámica */
             strcpy(name, mynodo->name);
             vfree(mynodo->name);
             vfree(mynodo);
             multilistCount--;
+            
             removed = TRUE;
         }
     }
@@ -344,13 +373,21 @@ void remove_all_list(void){
 
     
     list_for_each_safe(cur_node, aux, &multilist) {
+        
         mynodo = list_entry(cur_node,multilist_item_t, links);
+              
+        /* Eliminamos los elementos de la lista */      
+		cleanUpList(mynodo);
+		
         /* Eliminamos la lista */
         list_del(mynodo->mylist);
+        
         /* Eliminamos nodo de la lista */
         list_del(cur_node);
+        
         /* Eliminamos entrada proc */
         remove_proc_entry(mynodo->name, proc_dir);
+        
         /* Liberamos memoria dinámica */
         vfree(mynodo->name);
         vfree(mynodo);
@@ -427,7 +464,7 @@ void addElement(int num, multilist_item_t *lista) {
     mynodo->data = num;
 
     /* Añadimos el nodo a la lista */
-    list_add_tail(&mynodo->links, lista->mylist);
+    list_add_tail(&(mynodo->links), lista->mylist);
     /** Incrementamos el contador de nodos */
     lista->listCount++;
     spin_unlock(&(lista->lock));   
