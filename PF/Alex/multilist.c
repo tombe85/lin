@@ -29,7 +29,7 @@ typedef struct {
 
 typedef struct {
     char *name;
-    struct list_head *mylist;
+    struct list_head mylist;
     int listCount;
     spinlock_t lock; //void spin_lock_init(spinlock_t *lock);
     struct list_head links;
@@ -111,7 +111,7 @@ static ssize_t listproc_write(struct file *filp, const char __user *buf, size_t 
 
     } else if(sscanf(&kbuff[0],"remove %i",&num)) {
         /* Si la lista no esta vacia */
-        if(list_empty(lista->mylist) == 0) {
+        if(list_empty(&(lista->mylist)) == 0) {
             removeElement(num, lista);
 
             /* Informamos */
@@ -123,7 +123,7 @@ static ssize_t listproc_write(struct file *filp, const char __user *buf, size_t 
        
         if(strcmp("cleanup", procstr)==0) {
             /* Si la lista no esta vacia */
-            if(list_empty(lista->mylist) == 0) {
+            if(list_empty(&(lista->mylist)) == 0) {
                 /* Limpiamos la lista entera */
                 cleanUpList(lista);
                 /* Informamos */
@@ -132,7 +132,7 @@ static ssize_t listproc_write(struct file *filp, const char __user *buf, size_t 
                 printk(KERN_INFO "Multilist: Can't cleanup list. The list %s is empty\n", lista->name);
         } else if(strcmp("sort", procstr) == 0) {
             /* Si la lista no esta vacia */
-            if(list_empty(lista->mylist) == 0) {
+            if(list_empty(&(lista->mylist)) == 0) {
                 /* Ordenamos cadena */
                 sortlist(lista);
                 printk(KERN_INFO "Multilist: List %s sorted\n", lista->name);
@@ -169,7 +169,7 @@ static ssize_t listproc_read(struct file *filp, char __user *buf, size_t len, lo
     /* Listamos los elementos de la lista */
     spin_lock(&(lista->lock));
 
-    list_for_each(cur_node, lista->mylist) {
+    list_for_each(cur_node, &(lista->mylist)) {
         
         item = list_entry(cur_node,list_item_t, links);
         /* Escribimos en msgtmp el dato, el \n y lo concatenamos al kbuff final */
@@ -267,7 +267,7 @@ int addList(char * name) {
     spin_lock_init(&(nodo->lock));
 
     /* Inicializamos la lista */
-    INIT_LIST_HEAD(nodo->mylist);
+    INIT_LIST_HEAD(&(nodo->mylist));
     nodo->listCount = 0;
 
     if(down_interruptible(&multilist_lock)){
@@ -286,9 +286,12 @@ int addList(char * name) {
     /* En caso de error al crear directorio /proc, eliminamos la lista añadida */
     if (proc_entry == NULL) {
         removeList(name, FALSE);
-        printk(KERN_INFO "multilist: Can't create /proc entry\n");
+        printk(KERN_INFO "------> multilist: Can't create /proc entry <------\n");
         return -ENOMEM;
     }
+    else {
+		printk(KERN_INFO "------> multilist: Created /proc entry %s <------\n", nodo->name);
+	}
 
     return 0;
 }
@@ -315,11 +318,13 @@ int removeList(char *name, int remproc) {
         if(strcmp(mynodo->name, name) == 0) {
 			
 			
+			printk(KERN_INFO "------> multilist: list %s found <------\n", mynodo->name);
+			
 			/* Bloqueamos la lista */
 			spin_lock(&(mynodo->lock));
 			
 			/* Eliminamos todos los nodos (elementos) de la lista */
-			list_for_each_safe(cur_node2, aux, mynodo->mylist) {
+			list_for_each_safe(cur_node2, aux, &(mynodo->mylist)) {
 				
 				mylistnode = list_entry(cur_node2,list_item_t, links);
 				
@@ -334,21 +339,21 @@ int removeList(char *name, int remproc) {
 			
 			/* Desbloqueamos la lista */
 			spin_unlock(&(mynodo->lock));
-			
-			
-            /* Eliminamos nodo inicial la lista */
-            list_del(mynodo->mylist);
-            
-            /* Eliminamos nodo de la multilista */
-            list_del(cur_node);
-            
-            /* Liberamos memoria dinámica */
-            strcpy(name, mynodo->name);
-            vfree(mynodo->name);
-            vfree(mynodo);
-            multilistCount--;
-            
-            removed = TRUE;
+			//~ 
+			//~ 
+            //~ /* Eliminamos nodo inicial la lista */
+            //~ list_del(&(mynodo->mylist));
+            //~ 
+            //~ /* Eliminamos nodo de la multilista */
+            //~ list_del(cur_node);
+            //~ 
+            //~ /* Liberamos memoria dinámica */
+            //~ strcpy(name, mynodo->name);
+            //~ vfree(mynodo->name);
+            //~ vfree(mynodo);
+            //~ multilistCount--;
+            //~ 
+            //~ removed = TRUE;
         }
     }
 
@@ -380,7 +385,7 @@ void remove_all_list(void){
 		cleanUpList(mynodo);
 		
         /* Eliminamos la lista */
-        list_del(mynodo->mylist);
+        list_del(&(mynodo->mylist));
         
         /* Eliminamos nodo de la lista */
         list_del(cur_node);
@@ -393,6 +398,8 @@ void remove_all_list(void){
         vfree(mynodo);
         multilistCount--;
     }
+    
+    printk(KERN_INFO "------> multilist: All list removed <------\n");
 
     up(&multilist_lock);
 
@@ -438,7 +445,7 @@ void sortlist(multilist_item_t *lista) {
 	spin_lock(&(lista->lock)); 
 
     /* Recorremos la lista */
-    list_for_each(cur_node, lista->mylist) {
+    list_for_each(cur_node, &(lista->mylist)) {
         mynodo = list_entry(cur_node,list_item_t, links);
 
         /* Guardamos la dirección del nodo en el array */
@@ -464,7 +471,7 @@ void addElement(int num, multilist_item_t *lista) {
     mynodo->data = num;
 
     /* Añadimos el nodo a la lista */
-    list_add_tail(&(mynodo->links), lista->mylist);
+    list_add_tail(&(mynodo->links), &(lista->mylist));
     /** Incrementamos el contador de nodos */
     lista->listCount++;
     spin_unlock(&(lista->lock));   
@@ -480,7 +487,7 @@ void removeElement(int num, multilist_item_t *lista) {
     spin_lock(&(lista->lock));
 
     /* Para cada nodo de la lista comprobamos si contiene num */
-    list_for_each_safe(cur_node, aux, lista->mylist) {
+    list_for_each_safe(cur_node, aux, &(lista->mylist)) {
         mynodo = list_entry(cur_node,list_item_t, links);
         if(mynodo->data == num) {
             /* Eliminamos de la lista */
@@ -503,7 +510,7 @@ void cleanUpList(multilist_item_t *lista) {
     spin_lock(&(lista->lock));
 
     /* Recorremos la lista */
-    list_for_each_safe(cur_node, aux, lista->mylist) {
+    list_for_each_safe(cur_node, aux, &(lista->mylist)) {
         mynodo = list_entry(cur_node,list_item_t, links);
 
         /* Eliminamos nodo de la lista */
