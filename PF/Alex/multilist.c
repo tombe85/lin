@@ -12,7 +12,7 @@
 /* Datos del módulo */
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("MultiListproc Module - FDI-UCM");
-MODULE_AUTHOR("Miguel Higuera Romero & Alejandro Nicolás Ibarra Loik");
+MODULE_AUTHOR("Alejandro Nicolás Ibarra Loik");
 
 /* Constantes */
 #define BUF_LEN 100
@@ -31,7 +31,7 @@ typedef struct {
     char *name;
     struct list_head mylist;
     int listCount;
-    spinlock_t lock; //void spin_lock_init(spinlock_t *lock);
+    spinlock_t lock; 
     struct list_head links;
 } multilist_item_t;
 
@@ -234,14 +234,24 @@ static ssize_t listcontrol_write(struct file *filp, const char __user *buf, size
         printk(KERN_INFO "multilist: Added list called %s\n", name);
 
     } else if(sscanf(&kbuff[0],"delete %s", name)) {
+		
+		if(strcmp(name, "control") == 0) {
+			
+			/* Informamos */
+			printk(KERN_INFO "multilist: Cannot remove control directory\n");
+			
+			return -EINVAL;
+		}
+		else {
         
-        /* ELiminamos la lista de la multilista */
-        if((ret = removeList(name, TRUE)) != TRUE){
-            return ret;
-        }   
+			/* ELiminamos la lista de la multilista */
+			if((ret = removeList(name, TRUE)) != TRUE){
+				return ret;
+			}   
 
-        /* Informamos */
-        printk(KERN_INFO "multilist: Removed list called %s\n", name);
+			/* Informamos */
+			printk(KERN_INFO "multilist: Removed list called %s\n", name);
+		}
 
     } else {
         return -EINVAL;
@@ -299,10 +309,10 @@ int addList(char * name) {
 /* Funcion para eliminar una lista de la multilista (y directorio /proc) */
 int removeList(char *name, int remproc) {
     struct list_head* cur_node=NULL;
-    struct list_head* cur_node2=NULL;
+    //~ struct list_head* cur_node2=NULL;
     struct list_head* aux=NULL;
     multilist_item_t *mynodo;
-    list_item_t *mylistnode;
+    //~ list_item_t *mylistnode;
     int removed = -ENOENT;
 
     if(down_interruptible(&multilist_lock)){
@@ -320,40 +330,22 @@ int removeList(char *name, int remproc) {
 			
 			printk(KERN_INFO "------> multilist: list %s found <------\n", mynodo->name);
 			
-			/* Bloqueamos la lista */
-			spin_lock(&(mynodo->lock));
-			
-			/* Eliminamos todos los nodos (elementos) de la lista */
-			list_for_each_safe(cur_node2, aux, &(mynodo->mylist)) {
-				
-				mylistnode = list_entry(cur_node2,list_item_t, links);
-				
-				/* Eliminamos nodo de la lista */
-				list_del(cur_node2);
-				
-				/*Liberamos memoria dinámica del nodo */
-				vfree(mylistnode);
-			}		
-			
-			mynodo->listCount = 0;
-			
-			/* Desbloqueamos la lista */
-			spin_unlock(&(mynodo->lock));
-			//~ 
-			//~ 
-            //~ /* Eliminamos nodo inicial la lista */
-            //~ list_del(&(mynodo->mylist));
-            //~ 
-            //~ /* Eliminamos nodo de la multilista */
-            //~ list_del(cur_node);
-            //~ 
-            //~ /* Liberamos memoria dinámica */
-            //~ strcpy(name, mynodo->name);
-            //~ vfree(mynodo->name);
-            //~ vfree(mynodo);
-            //~ multilistCount--;
-            //~ 
-            //~ removed = TRUE;
+			/* Eliminamos los elementos de la lista */      
+			cleanUpList(mynodo);
+
+            /* Eliminamos nodo inicial la lista */
+            list_del(&(mynodo->mylist));
+            
+            /* Eliminamos nodo de la multilista */
+            list_del(cur_node);
+            
+            /* Liberamos memoria dinámica */
+            strcpy(name, mynodo->name);
+            vfree(mynodo->name);
+            vfree(mynodo);
+            multilistCount--;
+            
+            removed = TRUE;
         }
     }
 
@@ -371,6 +363,9 @@ void remove_all_list(void){
     struct list_head* cur_node=NULL;
     struct list_head* aux=NULL;
     multilist_item_t *mynodo;
+    char * names[multilistCount];
+    int i=0;
+    
 
     if(down_interruptible(&multilist_lock)){
         return;
@@ -380,6 +375,13 @@ void remove_all_list(void){
     list_for_each_safe(cur_node, aux, &multilist) {
         
         mynodo = list_entry(cur_node,multilist_item_t, links);
+        
+        names[i] = (char *)vmalloc(sizeof(char)* 100);
+        
+        /* Gusardamos los nombres de las listas */
+        strcpy(names[i], mynodo->name);
+        
+        printk(KERN_INFO "------> multilist: Removed list %s <------\n", names[i]);
               
         /* Eliminamos los elementos de la lista */      
 		cleanUpList(mynodo);
@@ -390,14 +392,21 @@ void remove_all_list(void){
         /* Eliminamos nodo de la lista */
         list_del(cur_node);
         
-        /* Eliminamos entrada proc */
-        remove_proc_entry(mynodo->name, proc_dir);
-        
         /* Liberamos memoria dinámica */
         vfree(mynodo->name);
         vfree(mynodo);
-        multilistCount--;
+
+        i++;
     }
+    
+    /* Eliminamos directorios /proc de todas las listas */
+    for(i=0; i<multilistCount; i++) {
+		/* Eliminamos entrada proc */
+        remove_proc_entry(names[i], proc_dir);
+        vfree(names[i]);
+        
+	}
+	multilistCount = 0;
     
     printk(KERN_INFO "------> multilist: All list removed <------\n");
 
@@ -562,6 +571,8 @@ int init_listproc_module( void )
 void exit_listproc_module( void )
 {
 	remove_all_list();
+	/* Eliminamos nodo de la lista */
+    list_del(&multilist);
     /* Eliminamos la entrada de proc */
 	remove_proc_entry("control", proc_dir);
     remove_proc_entry("listmulti", NULL);	//Directorio
