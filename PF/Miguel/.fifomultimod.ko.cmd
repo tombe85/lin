@@ -1,0 +1,1 @@
+cmd_/home/kernel/lin/github/lin/PF/Miguel/fifomultimod.ko := ld -r -m elf_i386 -T /home/kernel/kitkat-src/kernel/scripts/module-common.lds --build-id  -o /home/kernel/lin/github/lin/PF/Miguel/fifomultimod.ko /home/kernel/lin/github/lin/PF/Miguel/fifomultimod.o /home/kernel/lin/github/lin/PF/Miguel/fifomultimod.mod.o

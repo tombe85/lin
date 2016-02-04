@@ -1,0 +1,1 @@
+cmd_/home/kernel/lin/github/lin/PF/Alex/Parte_B/multilist.ko := ld -r -m elf_i386 -T /home/kernel/kitkat-src/kernel/scripts/module-common.lds --build-id  -o /home/kernel/lin/github/lin/PF/Alex/Parte_B/multilist.ko /home/kernel/lin/github/lin/PF/Alex/Parte_B/multilist.o /home/kernel/lin/github/lin/PF/Alex/Parte_B/multilist.mod.o
