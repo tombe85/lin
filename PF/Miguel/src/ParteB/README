@@ -1,0 +1,22 @@
+--- Twister - Android x86 C version ---
+
+- Visión general -
+
+Este programa implementa la ruleta del juego del twister, sacando por pantalla las órdenes a cumplir por el jugador que tiene el turno.
+
+Las órdenes son poner {el pié | la mano} {izquierda | derecha} en el color {azul | rojo | amarillo | verde}
+
+Las posibilidades de que toque una cosa u otra son totalmente aleatorias.
+
+- Visión interna -
+
+Para llevar esta función a cabo el programa crea una fifo llamada "fifotwister" utilizando el control de fifomulti (/proc/fifomulti/control) enviándole el comando "create fifotwister".
+
+Seguidamente se crea un fork. 
+El proceso hijo abre la fifo en modo escritura, encargándose de generar números aleatorios y meterlos en la fifo creada (/proc/fifomulti/fifotwister). 
+El proceso padre abre la fifo en modo lectura, espera a que el usuario pulse la tecla "Enter" y seguidamente leerá números aleatorios para componer la orden a sacar por pantalla. Una vez la orden es sacada por pantalla esperará de nuevo la pulsación de "Enter" para imprimir una nueva orden.
+A medida que se vayan sacando números de la fifo desde el proceso padre, ésta se irá rellenando de nuevo por el proceso hijo.
+
+El programa termina cuando el usuario presiona la combinación de teclas "Ctrl+c", produciendo la señal SIGINT que es capturada por el proceso padre. Éste proceso (el padre), tras capturar la señal, se encargará de cerrar la fifo, esperar a que finalice el proceso hijo y eliminar la fifo a través del fichero de control de fifomulti (/proc/fifomulti/control) enviándole "delete fifotwister"
+
+

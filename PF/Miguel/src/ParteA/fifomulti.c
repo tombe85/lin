@@ -69,9 +69,35 @@ static struct proc_dir_entry *proc_dir;
 static struct proc_dir_entry *proc_entry;
 static struct proc_dir_entry *proc_control;
 
+
+int exist_fifo(char * name){
+    struct list_head* cur_node=NULL;
+    fifolist_item_t *mynodo;
+
+    if(down_interruptible(&fifolist_lock)){
+	return TRUE;
+    }
+
+    /* Para cada nodo de la lista comprobamos si contiene num */
+    list_for_each(cur_node, &fifolist) {
+        mynodo = list_entry(cur_node,fifolist_item_t, links);
+	if(strcmp(mynodo->name, name) == 0){
+	    up(&fifolist_lock);
+	    return TRUE;
+	}
+    }
+
+    up(&fifolist_lock);
+    return FALSE;
+}
 int addFifo(char * name){
     fifolist_item_t *nodo;
     int len = MAX_NAME_LEN;
+    
+    if(exist_fifo(name)){
+	return -EINVAL;
+    }
+    
     nodo = (fifolist_item_t *)vmalloc(sizeof(fifolist_item_t));
     nodo->name = (char *)vmalloc(len * sizeof(char));
 
@@ -84,11 +110,10 @@ int addFifo(char * name){
     nodo->nr_prod_waiting = 0;
     nodo->nr_cons_waiting = 0;
     nodo->cbuffer = create_cbuffer_t(CBUF_SIZE);
-
+    
     if(down_interruptible(&fifolist_lock)){
-		return -ENAVAIL;
+	return -ENAVAIL;
     }
-
     list_add_tail(&nodo->links, &fifolist);
     listFifoCount++;
 
@@ -358,7 +383,9 @@ static ssize_t fifocontrol_write(struct file *filp, const char __user *buf, size
     /* AQUÍ CÓDIGO */
 
     if(sscanf(&kbuff[0],"create %s", name)) {
-	if(addFifo(name)){
+	if(strcmp(name, "control\0") == 0){
+	    return -EINVAL;
+	}else if((ret = addFifo(name))){
 	    return -ENOMEM;
 	}
 
@@ -366,7 +393,9 @@ static ssize_t fifocontrol_write(struct file *filp, const char __user *buf, size
 	printk(KERN_INFO "fifomulti: Added fifo called %s\n", name);
 
     }else if(sscanf(&kbuff[0],"delete %s", name)){
-	if((ret = removeFifo(name, TRUE)) != TRUE){
+	if(strcmp(name, "control\0") == 0){
+	    return -EINVAL;
+	}else if((ret = removeFifo(name, TRUE)) != TRUE){
 	    return ret;
 	}
 	/* Informamos */
