@@ -1,10 +1,4 @@
 # lin
-Proyects of LIN
+Proyects of LIN. Architecture of Linux and Android. Universidad Complutense de Madrid.
 
-Pagina tutorial git:
-
-http://rogerdudler.github.io/git-guide/index.es.html
-
-otra:
-
-http://rogerdudler.github.io/git-guide/files/git_cheat_sheet.pdf
+There are 5 proyects implemented by Miguel Higuera Romero and Alejandro Ibarra Loik.
